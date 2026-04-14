@@ -403,6 +403,9 @@ const serializeOpenAIProvider = (provider: OpenAIProviderConfig) => {
   if (provider.priority !== undefined) payload.priority = provider.priority;
   if (provider.testModel) payload['test-model'] = provider.testModel;
   if (provider.disableCooling) payload['disable-cooling'] = true;
+  if (provider.excludedModels && provider.excludedModels.length) {
+    payload['excluded-models'] = provider.excludedModels;
+  }
   return payload;
 };
 

@@ -118,11 +118,13 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
   const [showTooManyWarning, setShowTooManyWarning] = useState(false);
   const [resettingQuotaName, setResettingQuotaName] = useState<string | null>(null);
 
+  const [forceShowAll, setForceShowAll] = useState(false);
+
   const filteredFiles = useMemo(() => files.filter((file) => config.filterFn(file)), [
     files,
     config
   ]);
-  const showAllAllowed = filteredFiles.length <= MAX_SHOW_ALL_THRESHOLD;
+  const showAllAllowed = forceShowAll || filteredFiles.length <= MAX_SHOW_ALL_THRESHOLD;
   const effectiveViewMode: ViewMode = viewMode === 'all' && !showAllAllowed ? 'paged' : viewMode;
 
   const {
@@ -430,9 +432,18 @@ export function QuotaSection<TState extends QuotaStatusState, TData>({
         <div className={styles.warningOverlay} onClick={() => setShowTooManyWarning(false)}>
           <div className={styles.warningModal} onClick={(e) => e.stopPropagation()}>
             <p>{t('auth_files.too_many_files_warning')}</p>
-            <Button variant="primary" size="sm" onClick={() => setShowTooManyWarning(false)}>
-              {t('common.confirm')}
-            </Button>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+              <Button variant="primary" size="sm" onClick={() => setShowTooManyWarning(false)}>
+                {t('common.confirm')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => {
+                setForceShowAll(true);
+                setViewMode('all');
+                setShowTooManyWarning(false);
+              }}>
+                {t('auth_files.load_all_anyway', { defaultValue: '仍然加载全部' })}
+              </Button>
+            </div>
           </div>
         </div>
       )}

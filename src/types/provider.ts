@@ -66,5 +66,6 @@ export interface OpenAIProviderConfig {
   testModel?: string;
   disableCooling?: boolean;
   authIndex?: string;
+  excludedModels?: string[];
   [key: string]: unknown;
 }

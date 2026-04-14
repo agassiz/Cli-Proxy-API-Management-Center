@@ -15,12 +15,26 @@ type QuotaUpdater<T> = T | ((prev: T) => T);
 
 type QuotaSetter<T> = (updater: QuotaUpdater<T>) => void;
 
-interface LoadQuotaResult<TData> {
-  name: string;
-  status: 'success' | 'error';
-  data?: TData;
-  error?: string;
-  errorStatus?: number;
+/** 最大并发请求数 */
+const MAX_CONCURRENCY = 20;
+
+/** 带并发限制的并发执行器，每完成一个任务立即调用 onDone 回调 */
+async function pMapStream<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  limit: number
+): Promise<void> {
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      await fn(items[idx]);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
 }
 
 export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>) {
@@ -47,6 +61,7 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
       try {
         if (targets.length === 0) return;
 
+        // 先将所有目标设为 loading 状态
         setQuota((prev) => {
           const nextState = { ...prev };
           targets.forEach((file) => {
@@ -55,35 +70,34 @@ export function useQuotaLoader<TState, TData>(config: QuotaConfig<TState, TData>
           return nextState;
         });
 
-        const results = await Promise.all(
-          targets.map(async (file): Promise<LoadQuotaResult<TData>> => {
+        // 每个请求完成后立即更新对应凭证的状态，实时渲染到页面
+        await pMapStream(
+          targets,
+          async (file) => {
+            if (requestId !== requestIdRef.current) return;
+
+            let state: TState;
             try {
               const data = await config.fetchQuota(file, t);
-              return { name: file.name, status: 'success', data };
+              state = config.buildSuccessState(data);
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : t('common.unknown_error');
               const errorStatus = getStatusFromError(err);
-              return { name: file.name, status: 'error', error: message, errorStatus };
-            }
-          })
-        );
-
-        if (requestId !== requestIdRef.current) return;
-
-        setQuota((prev) => {
-          const nextState = { ...prev };
-          results.forEach((result) => {
-            if (result.status === 'success') {
-              nextState[result.name] = config.buildSuccessState(result.data as TData);
-            } else {
-              nextState[result.name] = config.buildErrorState(
-                result.error || t('common.unknown_error'),
-                result.errorStatus
+              state = config.buildErrorState(
+                message || t('common.unknown_error'),
+                errorStatus
               );
             }
-          });
-          return nextState;
-        });
+
+            if (requestId !== requestIdRef.current) return;
+
+            setQuota((prev) => ({
+              ...prev,
+              [file.name]: state,
+            }));
+          },
+          MAX_CONCURRENCY
+        );
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);

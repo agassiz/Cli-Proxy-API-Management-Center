@@ -252,6 +252,8 @@ const normalizeOpenAIProvider = (provider: unknown): OpenAIProviderConfig | null
   if (testModel) result.testModel = String(testModel);
   const authIndex = normalizeAuthIndex(provider['auth-index']);
   if (authIndex) result.authIndex = authIndex;
+  const excludedModels = normalizeExcludedModels(provider['excluded-models'] ?? provider.excludedModels);
+  if (excludedModels.length) result.excludedModels = excludedModels;
   return result;
 };
 

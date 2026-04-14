@@ -131,7 +131,7 @@ export const AUTH_FILE_ICONS: Record<string, AuthFileIconAsset> = {
 };
 
 export const clampCardPageSize = (value: number) =>
-  Math.min(MAX_CARD_PAGE_SIZE, Math.max(MIN_CARD_PAGE_SIZE, Math.round(value)));
+  Math.max(MIN_CARD_PAGE_SIZE, Math.round(value));
 
 export const resolveQuotaErrorMessage = (
   t: TFunction,
@@ -164,13 +164,43 @@ export const buildOAuthProviderOptions = (values: Iterable<unknown>): string[] =
 
 export const getAuthFileStatusMessage = (file: AuthFileItem): string => {
   const raw = file['status_message'] ?? file.statusMessage;
-  if (typeof raw === 'string') return raw.trim();
-  if (raw == null) return '';
-  return String(raw).trim();
+  const rawText =
+    typeof raw === 'string' ? raw.trim() : raw == null ? '' : String(raw).trim();
+  const lastErrorRaw = file['last_error_message'];
+  const lastErrorText =
+    typeof lastErrorRaw === 'string' ? lastErrorRaw.trim() : lastErrorRaw == null ? '' : String(lastErrorRaw).trim();
+
+  const genericMessages = new Set([
+    '',
+    'error',
+    'quota exhausted',
+    'unauthorized',
+    'forbidden',
+    'bad_request',
+    'payment_required',
+    'not_found',
+    'transient upstream error',
+    'request failed',
+  ]);
+
+  if (lastErrorText && genericMessages.has(rawText.toLowerCase())) {
+    return lastErrorText;
+  }
+  return rawText;
 };
 
 export const hasAuthFileStatusMessage = (file: AuthFileItem): boolean =>
   getAuthFileStatusMessage(file).length > 0;
+
+/** 检查凭证是否有指定 HTTP 状态码的问题记录 */
+export const hasCredentialIssue = (file: AuthFileItem, httpStatus: number): boolean => {
+  const issues = file.credential_issues ?? file['credentialIssues'];
+  if (!issues || typeof issues !== 'object') return false;
+  return String(httpStatus) in issues;
+};
+
+/** 问题凭证细分筛选类型 */
+export type ProblemIssueFilter = 'all' | '400' | '401' | '403';
 
 export const getTypeLabel = (t: TFunction, type: string): string => {
   const providerKey = normalizeProviderKey(type);

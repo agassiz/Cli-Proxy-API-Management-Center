@@ -1,0 +1,20 @@
+{
+  "version": "2.0",
+  "project_path": "/Users/andyhome/workspaces/github/Cli-Proxy-API-Management-Center",
+  "entries": [
+    {
+      "id": "cebff1a0-02be-4f2a-9e8a-2434fa5a06f5",
+      "content": "acemcp 代码索引已启用 - 配置摘要: 文件扩展名=[\".py\", \".js\", \".ts\", \".jsx\", \".tsx\", \".java\", \".go\", \".rs\", \".cpp\", \".c\", \".h\", \".hpp\", \".cs\", \".rb\", \".php\", \".md\", \".txt\", \".json\", \".yaml\", \".yml\", \".toml\", \".xml\", \".html\", \".css\", \".scss\", \".sql\", \".sh\", \".bash\"], 排除模式=[\"node_modules\", \".git\", \"target\", \"dist\"], 批次大小=10, 最大行数/块=800",
+      "content_normalized": "acemcp 代码索引已启用 - 配置摘要 文件扩展名=py js ts jsx tsx java go rs cpp c h hpp cs rb php md txt json yaml yml toml xml html css scss sql sh bash 排除模式=node_modules git target dist 批次大小=10 最大行数/块=800",
+      "category": "Context",
+      "created_at": "2026-04-05T10:49:39.437988Z",
+      "updated_at": "2026-04-05T10:49:39.437988Z"
+    }
+  ],
+  "last_dedup_at": "2026-04-05T10:49:39.437808Z",
+  "config": {
+    "similarity_threshold": 0.7,
+    "dedup_on_startup": true,
+    "enable_dedup": true
+  }
+}
