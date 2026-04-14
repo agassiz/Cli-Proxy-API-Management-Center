@@ -35,9 +35,11 @@ import {
   getTypeColor,
   getTypeLabel,
   hasAuthFileStatusMessage,
+  hasCredentialIssue,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
+  type ProblemIssueFilter,
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
@@ -81,10 +83,12 @@ const buildWildcardSearch = (value: string): RegExp | null => {
 
 const resolveStatusFilterMode = (
   problemOnly: boolean,
-  disabledOnly: boolean
+  disabledOnly: boolean,
+  healthyOnly: boolean
 ): AuthFilesStatusFilterMode => {
   if (problemOnly) return 'problem';
   if (disabledOnly) return 'disabled';
+  if (healthyOnly) return 'healthy';
   return 'all';
 };
 
@@ -104,6 +108,7 @@ export function AuthFilesPage() {
 
   const [filter, setFilter] = useState<'all' | string>('all');
   const [statusFilterMode, setStatusFilterMode] = useState<AuthFilesStatusFilterMode>('all');
+  const [issueFilter, setIssueFilter] = useState<ProblemIssueFilter>('all');
   const [compactMode, setCompactMode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -203,6 +208,7 @@ export function AuthFilesPage() {
   const problemOnly = statusFilterMode === 'problem';
   const disabledOnly = statusFilterMode === 'disabled';
   const enabledOnly = statusFilterMode === 'enabled';
+  const healthyOnly = statusFilterMode === 'healthy';
 
   useEffect(() => {
     const persistedCompactMode = readPersistedAuthFilesCompactMode();
@@ -222,13 +228,27 @@ export function AuthFilesPage() {
         setStatusFilterMode(persistedStatusFilterMode);
       } else if (
         typeof persisted.problemOnly === 'boolean' ||
-        typeof persisted.disabledOnly === 'boolean'
+        typeof persisted.disabledOnly === 'boolean' ||
+        typeof persisted.healthyOnly === 'boolean'
       ) {
         setStatusFilterMode(
-          resolveStatusFilterMode(persisted.problemOnly === true, persisted.disabledOnly === true)
+          resolveStatusFilterMode(
+            persisted.problemOnly === true,
+            persisted.disabledOnly === true,
+            persisted.healthyOnly === true
+          )
         );
       }
-      if (typeof persistedCompactMode !== 'boolean' && typeof persisted.compactMode === 'boolean') {
+      if (
+        typeof persisted.issueFilter === 'string' &&
+        ['all', '400', '401', '403'].includes(persisted.issueFilter)
+      ) {
+        setIssueFilter(persisted.issueFilter as ProblemIssueFilter);
+      }
+      if (
+        typeof persistedCompactMode !== 'boolean' &&
+        typeof persisted.compactMode === 'boolean'
+      ) {
         setCompactMode(persisted.compactMode);
       }
       if (typeof persisted.search === 'string') {
@@ -269,6 +289,8 @@ export function AuthFilesPage() {
       statusFilterMode,
       problemOnly,
       disabledOnly,
+      healthyOnly,
+      issueFilter,
       compactMode,
       search,
       page,
@@ -282,6 +304,8 @@ export function AuthFilesPage() {
     compactMode,
     disabledOnly,
     filter,
+    healthyOnly,
+    issueFilter,
     page,
     pageSize,
     pageSizeByMode,
@@ -352,6 +376,9 @@ export function AuthFilesPage() {
 
   const handleStatusFilterModeChange = useCallback((nextMode: AuthFilesStatusFilterMode) => {
     setStatusFilterMode(nextMode);
+    if (nextMode !== 'problem') {
+      setIssueFilter('all');
+    }
     setPage(1);
   }, []);
 
@@ -389,10 +416,14 @@ export function AuthFilesPage() {
       files.filter((file) => {
         if (enabledOnly && file.disabled === true) return false;
         if (disabledOnly && file.disabled !== true) return false;
+        if (healthyOnly) return !file.disabled && !hasAuthFileStatusMessage(file);
         if (problemOnly && !hasAuthFileStatusMessage(file)) return false;
+        if (problemOnly && issueFilter !== 'all' && !hasCredentialIssue(file, Number(issueFilter))) {
+          return false;
+        }
         return true;
       }),
-    [disabledOnly, enabledOnly, files, problemOnly]
+    [disabledOnly, enabledOnly, files, healthyOnly, issueFilter, problemOnly]
   );
 
   const statusFilterOptions = useMemo(
@@ -401,6 +432,7 @@ export function AuthFilesPage() {
         { value: 'all', label: t('auth_files.problem_filter_all') },
         { value: 'enabled', label: t('auth_files.problem_filter_enabled') },
         { value: 'disabled', label: t('auth_files.problem_filter_disabled') },
+        { value: 'healthy', label: t('auth_files.problem_filter_healthy') },
         { value: 'problem', label: t('auth_files.problem_filter_problem') },
       ] satisfies Array<{ value: AuthFilesStatusFilterMode; label: string }>,
     [t]
@@ -663,10 +695,33 @@ export function AuthFilesPage() {
   );
 
   const deleteAllButtonLabel = (() => {
-    if (enabledOnly || disabledOnly) {
+    if (enabledOnly) {
       return t('auth_files.delete_filtered_result_button');
     }
+    if (disabledOnly) {
+      return normalizedFilter === 'all'
+        ? t('auth_files.delete_disabled_button')
+        : t('auth_files.delete_disabled_button_with_type', {
+            type: getTypeLabel(t, normalizedFilter),
+          });
+    }
+    if (healthyOnly) {
+      return normalizedFilter === 'all'
+        ? t('auth_files.delete_healthy_button')
+        : t('auth_files.delete_healthy_button_with_type', {
+            type: getTypeLabel(t, normalizedFilter),
+          });
+    }
     if (problemOnly) {
+      if (issueFilter !== 'all') {
+        const issueLabel = t(`auth_files.issue_filter_${issueFilter}`);
+        return normalizedFilter === 'all'
+          ? t('auth_files.delete_issue_button', { issue: issueLabel })
+          : t('auth_files.delete_issue_button_with_type', {
+              issue: issueLabel,
+              type: getTypeLabel(t, normalizedFilter),
+            });
+      }
       return normalizedFilter === 'all'
         ? t('auth_files.delete_problem_button')
         : t('auth_files.delete_problem_button_with_type', {
@@ -709,10 +764,16 @@ export function AuthFilesPage() {
                   problemOnly,
                   disabledOnly,
                   enabledOnly,
+                  healthyOnly,
+                  issueFilter,
                   onResetFilterToAll: () => setFilter('all'),
-                  onResetProblemOnly: () => setStatusFilterMode('all'),
+                  onResetProblemOnly: () => {
+                    setStatusFilterMode('all');
+                    setIssueFilter('all');
+                  },
                   onResetDisabledOnly: () => setStatusFilterMode('all'),
                   onResetEnabledOnly: () => setStatusFilterMode('all'),
+                  onResetHealthyOnly: () => setStatusFilterMode('all'),
                 })
               }
               disabled={disableControls || loading || deletingAll}
@@ -807,6 +868,30 @@ export function AuthFilesPage() {
                       handleStatusFilterModeChange(next as AuthFilesStatusFilterMode)
                     }
                   />
+                  {problemOnly && (
+                    <div className={styles.filterToggleGroup}>
+                      <div className={styles.filterToggleCard}>
+                        <label className={styles.filterToggleLabel}>
+                          {t('auth_files.issue_filter_label')}
+                        </label>
+                        <div className={styles.issueFilterGroup}>
+                          {(['all', '400', '401', '403'] as ProblemIssueFilter[]).map((value) => (
+                            <Button
+                              key={value}
+                              variant={issueFilter === value ? 'primary' : 'secondary'}
+                              size="sm"
+                              onClick={() => {
+                                setIssueFilter(value);
+                                setPage(1);
+                              }}
+                            >
+                              {t(`auth_files.issue_filter_${value}`)}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

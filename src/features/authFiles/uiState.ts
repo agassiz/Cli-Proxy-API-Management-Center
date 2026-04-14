@@ -3,6 +3,7 @@ export const AUTH_FILES_STATUS_FILTER_MODES = [
   'all',
   'enabled',
   'disabled',
+  'healthy',
   'problem',
 ] as const;
 
@@ -13,7 +14,9 @@ export type AuthFilesUiState = {
   filter?: string;
   problemOnly?: boolean;
   disabledOnly?: boolean;
+  healthyOnly?: boolean;
   statusFilterMode?: AuthFilesStatusFilterMode;
+  issueFilter?: string;
   compactMode?: boolean;
   search?: string;
   page?: number;

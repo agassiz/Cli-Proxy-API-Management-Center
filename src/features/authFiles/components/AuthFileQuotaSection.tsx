@@ -69,6 +69,10 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     return assertNever(quotaType);
   });
 
+  const requestAuthFilesRefresh = useCallback(() => {
+    window.dispatchEvent(new Event('auth-files-refresh'));
+  }, []);
+
   const refreshQuotaForFile = useCallback(async () => {
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
@@ -95,6 +99,7 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
         ...prev,
         [file.name]: config.buildSuccessState(data),
       }));
+      requestAuthFilesRefresh();
       showNotification(t('auth_files.quota_refresh_success', { name: file.name }), 'success');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('common.unknown_error');
@@ -103,9 +108,10 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
         ...prev,
         [file.name]: config.buildErrorState(message, status),
       }));
+      requestAuthFilesRefresh();
       showNotification(t('auth_files.quota_refresh_failed', { name: file.name, message }), 'error');
     }
-  }, [disableControls, file, quota?.status, quotaType, showNotification, t, updateQuotaState]);
+  }, [disableControls, file, quota?.status, quotaType, requestAuthFilesRefresh, showNotification, t, updateQuotaState]);
 
   const resetQuotaForFile = useCallback(() => {
     if (disableControls) return;
