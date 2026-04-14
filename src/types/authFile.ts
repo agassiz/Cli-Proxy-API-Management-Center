@@ -20,6 +20,14 @@ export type AuthFileType =
   | 'empty'
   | 'unknown';
 
+export interface CredentialIssue {
+  first_seen?: string;
+  last_seen?: string;
+  count?: number;
+  last_message?: string;
+  source?: string;
+}
+
 export interface AuthFileItem {
   name: string;
   type?: AuthFileType | string;
@@ -31,12 +39,15 @@ export interface AuthFileItem {
   unavailable?: boolean;
   status?: string;
   statusMessage?: string;
+  last_error_message?: string;
+  last_error_status?: number;
   lastRefresh?: string | number;
   modified?: number;
   success?: unknown;
   failed?: unknown;
   recent_requests?: RecentRequestBucket[];
   recentRequests?: RecentRequestBucket[];
+  credential_issues?: Record<string, CredentialIssue>;
   [key: string]: unknown;
 }
 

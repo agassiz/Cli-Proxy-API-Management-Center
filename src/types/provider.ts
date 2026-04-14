@@ -60,5 +60,6 @@ export interface OpenAIProviderConfig {
   priority?: number;
   testModel?: string;
   authIndex?: string;
+  excludedModels?: string[];
   [key: string]: unknown;
 }

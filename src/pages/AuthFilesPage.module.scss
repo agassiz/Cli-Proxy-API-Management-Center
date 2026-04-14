@@ -357,6 +357,13 @@
   pointer-events: none;
 }
 
+.issueFilterGroup {
+  display: flex;
+  gap: 6px;
+  margin-left: 8px;
+  flex-wrap: wrap;
+}
+
 .pageSizeSelect {
   width: 100%;
   padding: 8px 12px;
@@ -1071,6 +1078,7 @@
   border-radius: 8px;
   padding: 8px 10px;
   word-break: break-word;
+  white-space: pre-line;
 }
 
 .messageIcon {
