@@ -112,7 +112,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
             ? styles.kimiCard
             : quotaType === 'xai'
               ? styles.xaiCard
-              : '';
+              : quotaType === 'kiro'
+                ? styles.kiroCard
+                : quotaType === 'github-copilot'
+                  ? styles.copilotCard
+                  : '';
 
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndexKey = normalizeRecentRequestAuthIndex(rawAuthIndex);

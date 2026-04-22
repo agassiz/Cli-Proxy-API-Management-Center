@@ -25,7 +25,14 @@ export type AuthFileModelItem = {
 };
 export type AuthFileIconAsset = string | { light: string; dark: string };
 
-export type QuotaProviderType = 'antigravity' | 'claude' | 'codex' | 'kimi' | 'xai';
+export type QuotaProviderType =
+  | 'antigravity'
+  | 'claude'
+  | 'codex'
+  | 'kimi'
+  | 'xai'
+  | 'kiro'
+  | 'github-copilot';
 
 export const QUOTA_PROVIDER_TYPES = new Set<QuotaProviderType>([
   'antigravity',
@@ -33,6 +40,8 @@ export const QUOTA_PROVIDER_TYPES = new Set<QuotaProviderType>([
   'codex',
   'kimi',
   'xai',
+  'kiro',
+  'github-copilot',
 ]);
 
 export const OAUTH_PROVIDER_PRESETS = [
@@ -66,6 +75,14 @@ export const TYPE_COLORS: Record<string, TypeColorSet> = {
   kimi: {
     light: { bg: '#dce8ff', text: '#0560cf' },
     dark: { bg: '#003880', text: '#70b5ff' },
+  },
+  kiro: {
+    light: { bg: '#fff8e1', text: '#ff8f00' },
+    dark: { bg: '#7a4e00', text: '#ffd54f' },
+  },
+  'github-copilot': {
+    light: { bg: '#f0f0f0', text: '#24292f' },
+    dark: { bg: '#30363d', text: '#c9d1d9' },
   },
   // Gemini logo: 多色蓝 #3186FF（偏柔和的蓝）
   gemini: {
@@ -208,6 +225,7 @@ export const getTypeLabel = (t: TFunction, type: string): string => {
   const translated = t(key);
   if (translated !== key) return translated;
   if (providerKey === 'iflow') return 'iFlow';
+  if (providerKey === 'github-copilot') return 'GitHub Copilot';
   return type.charAt(0).toUpperCase() + type.slice(1);
 };
 
