@@ -7,6 +7,8 @@ import type {
   CodexUsagePayload,
   KimiUsagePayload,
   XaiBillingPayload,
+  KiroQuotaPayload,
+  CopilotQuotaPayload,
 } from '@/types';
 import { normalizeAuthIndex } from '@/utils/authIndex';
 
@@ -199,6 +201,57 @@ export function parseXaiBillingPayload(payload: unknown): XaiBillingPayload | nu
   }
   if (typeof payload === 'object') {
     return payload as XaiBillingPayload;
+  }
+  return null;
+}
+
+export function parseKiroQuotaPayload(payload: unknown): KiroQuotaPayload | null {
+  if (payload === undefined || payload === null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as KiroQuotaPayload;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof payload === 'object') {
+    return payload as KiroQuotaPayload;
+  }
+  return null;
+}
+
+export function parseKiroErrorPayload(payload: unknown): { reason?: string; message?: string } | null {
+  if (payload === undefined || payload === null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as { reason?: string; message?: string };
+    } catch {
+      return null;
+    }
+  }
+  if (typeof payload === 'object') {
+    return payload as { reason?: string; message?: string };
+  }
+  return null;
+}
+
+export function parseCopilotQuotaPayload(payload: unknown): CopilotQuotaPayload | null {
+  if (payload === undefined || payload === null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as CopilotQuotaPayload;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof payload === 'object') {
+    return payload as CopilotQuotaPayload;
   }
   return null;
 }
