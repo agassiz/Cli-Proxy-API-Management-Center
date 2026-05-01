@@ -39,6 +39,7 @@ export type UseAuthFilesDataResult = {
   uploading: boolean;
   deleting: string | null;
   deletingAll: boolean;
+  clearingRuntimeErrors: boolean;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -47,6 +48,7 @@ export type UseAuthFilesDataResult = {
   handleFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleDelete: (name: string) => void;
   handleDeleteAll: (options: DeleteAllOptions) => void;
+  handleClearRuntimeErrors: () => void;
   handleDownload: (name: string) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   toggleSelect: (name: string) => void;
@@ -68,6 +70,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [clearingRuntimeErrors, setClearingRuntimeErrors] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -469,6 +472,44 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     [showNotification, t]
   );
 
+  const handleClearRuntimeErrors = useCallback(() => {
+    showConfirmation({
+      title: t('auth_files.clear_runtime_errors_title'),
+      message: t('auth_files.clear_runtime_errors_confirm'),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        setClearingRuntimeErrors(true);
+        try {
+          const result = await authFilesApi.clearRuntimeErrors();
+          await loadFiles();
+
+          if (result.failed && result.failed.length > 0) {
+            showNotification(
+              t('auth_files.clear_runtime_errors_partial', {
+                success: result.cleared,
+                failed: result.failed.length,
+              }),
+              'warning'
+            );
+          } else if (result.cleared > 0) {
+            showNotification(
+              t('auth_files.clear_runtime_errors_success', { count: result.cleared }),
+              'success'
+            );
+          } else {
+            showNotification(t('auth_files.clear_runtime_errors_none'), 'info');
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '';
+          showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+        } finally {
+          setClearingRuntimeErrors(false);
+        }
+      },
+    });
+  }, [loadFiles, showConfirmation, showNotification, t]);
+
   const handleStatusToggle = useCallback(
     async (item: AuthFileItem, enabled: boolean) => {
       const name = item.name;
@@ -688,6 +729,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     uploading,
     deleting,
     deletingAll,
+    clearingRuntimeErrors,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -696,6 +738,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     handleFileChange,
     handleDelete,
     handleDeleteAll,
+    handleClearRuntimeErrors,
     handleDownload,
     handleStatusToggle,
     toggleSelect,

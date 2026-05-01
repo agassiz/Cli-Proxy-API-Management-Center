@@ -1,6 +1,6 @@
 import { apiCallApi, getApiCallErrorMessage } from './apiCall';
 import {
-  ANTIGRAVITY_CODE_ASSIST_URL,
+  ANTIGRAVITY_CODE_ASSIST_URLS,
   ANTIGRAVITY_REQUEST_HEADERS,
   createStatusError,
   normalizeStringValue,
@@ -38,6 +38,7 @@ type RawTierPayload = {
 };
 
 const CODE_ASSIST_REQUEST_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
+const ANTIGRAVITY_CODE_ASSIST_URL = ANTIGRAVITY_CODE_ASSIST_URLS[0];
 
 const PLAN_BY_TIER_ID = new Map<string, AntigravitySubscriptionPlan>([
   ['free-tier', 'free'],

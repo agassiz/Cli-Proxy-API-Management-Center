@@ -7,6 +7,7 @@ import {
   IconDownload,
   IconInfo,
   IconModelCluster,
+  IconRefreshCw,
   IconSettings,
   IconTrash2,
 } from '@/components/ui/icons';
@@ -34,7 +35,10 @@ import {
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
-import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
+import {
+  AuthFileQuotaSection,
+  useAuthFileQuotaRefresh,
+} from '@/features/authFiles/components/AuthFileQuotaSection';
 import styles from '@/pages/AuthFilesPage.module.scss';
 
 const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'available']);
@@ -100,6 +104,9 @@ export function AuthFileCard(props: AuthFileCardProps) {
     quotaFilterType && resolveQuotaType(file) === quotaFilterType ? quotaFilterType : null;
 
   const showQuotaLayout = Boolean(quotaType) && !isRuntimeOnly && !compact;
+  const quotaRefresh = useAuthFileQuotaRefresh(file, quotaType, disableControls);
+  const showQuotaRefreshButton =
+    showQuotaLayout && quotaRefresh.quotaStatus !== 'loading';
 
   const providerCardClass =
     quotaType === 'antigravity'
@@ -129,6 +136,9 @@ export function AuthFileCard(props: AuthFileCardProps) {
 
   const priorityValue = parsePriorityValue(file.priority ?? file['priority']);
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
+  const isCodexFile = String(file.type ?? file.provider ?? '').trim().toLowerCase() === 'codex';
+  const canUseSuperCategory = isCodexFile && file.super_category_allowed === true;
+  const isSuperCategory = canUseSuperCategory && (file.super_category === true || file['super_category'] === true);
   const stateLabel = isRuntimeOnly
     ? t('auth_files.type_virtual') || '虚拟认证文件'
     : file.disabled
@@ -193,6 +203,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
                   {typeLabel}
                 </span>
                 <span className={`${styles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                {isSuperCategory && (
+                  <span className={`${styles.stateBadge} ${styles.stateBadgeSuper}`}>
+                    ⚡ {t('auth_files.super_category_display')}
+                  </span>
+                )}
               </div>
               <span className={styles.fileName} title={file.name}>
                 {file.name}
@@ -324,6 +339,20 @@ export function AuthFileCard(props: AuthFileCardProps) {
             </div>
             {!isRuntimeOnly && (
               <div className={styles.statusToggle}>
+                {showQuotaRefreshButton && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className={styles.iconButton}
+                    onClick={() => void quotaRefresh.refreshQuotaForFile()}
+                    disabled={!quotaRefresh.canRefreshQuota}
+                    title={t('auth_files.quota_refresh_single')}
+                    aria-label={t('auth_files.quota_refresh_single')}
+                  >
+                    <IconRefreshCw className={styles.actionIcon} size={16} />
+                  </Button>
+                )}
                 <span className={styles.statusToggleLabel}>
                   {t('auth_files.status_toggle_label')}
                 </span>
