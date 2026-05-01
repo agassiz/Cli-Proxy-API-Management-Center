@@ -976,6 +976,18 @@
   border: 1px dashed color-mix(in srgb, var(--border-primary) 90%, transparent);
 }
 
+.stateBadgeSuper {
+  color: #7c3aed;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+}
+
+:global(.dark) .stateBadgeSuper {
+  color: #c4b5fd;
+  background: rgba(124, 58, 237, 0.15);
+  border-color: rgba(167, 139, 250, 0.35);
+}
+
 .fileName {
   font-size: 14px;
   font-weight: 800;

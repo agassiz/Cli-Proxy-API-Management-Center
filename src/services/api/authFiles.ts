@@ -16,6 +16,10 @@ export type AuthFileFieldsPatch = {
   headers?: Record<string, string>;
   priority?: number;
   note?: string;
+  excluded_models?: string[];
+  disable_cooling?: boolean | null;
+  super_category?: boolean;
+  websockets?: boolean;
 };
 type AuthFileBatchFailure = { name: string; error: string };
 type AuthFileBatchUploadResponse = {
@@ -41,6 +45,11 @@ type AuthFileBatchDeleteResult = {
   deleted: number;
   files: string[];
   failed: AuthFileBatchFailure[];
+};
+type AuthFileRuntimeClearResponse = {
+  status: string;
+  cleared: number;
+  failed?: AuthFileBatchFailure[];
 };
 
 export const AUTH_FILE_INVALID_JSON_OBJECT_ERROR = 'AUTH_FILE_INVALID_JSON_OBJECT';
@@ -442,6 +451,18 @@ export const authFilesApi = {
   deleteFile: (name: string) => authFilesApi.deleteFiles([name]),
 
   deleteAll: () => apiClient.delete('/auth-files', { params: { all: true } }),
+
+  clearRuntimeErrors: () =>
+    apiClient.patch<AuthFileRuntimeClearResponse>('/auth-files/runtime-state/clear'),
+
+  syncQuotaDisplay: (
+    name: string,
+    payload: {
+      provider: string;
+      antigravity_quota_groups?: unknown[];
+      credit_balance?: number | string | null;
+    }
+  ) => apiClient.patch('/auth-files/quota-display', { name, ...payload }),
 
   downloadText: async (name: string): Promise<string> => {
     const response = await apiClient.getRaw(`/auth-files/download?name=${encodeURIComponent(name)}`, {

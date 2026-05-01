@@ -11,7 +11,7 @@ import {
   COPILOT_CONFIG
 } from '@/components/quota';
 import { useNotificationStore, useQuotaStore } from '@/stores';
-import type { AuthFileItem } from '@/types';
+import type { AntigravityQuotaGroup, AntigravityQuotaState, AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import {
   isRuntimeOnlyAuthFile,
@@ -19,9 +19,11 @@ import {
   type QuotaProviderType
 } from '@/features/authFiles/constants';
 import { QuotaProgressBar } from '@/features/authFiles/components/QuotaProgressBar';
+import { authFilesApi } from '@/services/api';
 import styles from '@/pages/AuthFilesPage.module.scss';
 
 type QuotaState = { status?: string; error?: string; errorStatus?: number } | undefined;
+const noopQuotaStateUpdater = (() => undefined) as unknown as (updater: unknown) => void;
 
 const getQuotaConfig = (type: QuotaProviderType) => {
   if (type === 'antigravity') return ANTIGRAVITY_CONFIG;
@@ -33,18 +35,85 @@ const getQuotaConfig = (type: QuotaProviderType) => {
   return GEMINI_CLI_CONFIG;
 };
 
+const normalizeNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const normalizeString = (value: unknown): string | null => {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+const buildEmbeddedAntigravityQuota = (file: AuthFileItem): AntigravityQuotaState | undefined => {
+  const rawGroups = Array.isArray(file.antigravity_quota_groups)
+    ? file.antigravity_quota_groups
+    : [];
+  const groups = rawGroups
+    .map((raw): AntigravityQuotaGroup | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const item = raw as Record<string, unknown>;
+      const id = normalizeString(item.id) ?? normalizeString(item.label);
+      const label = normalizeString(item.label) ?? id;
+      if (!id || !label) return null;
+      const models = Array.isArray(item.models)
+        ? item.models
+            .map((model) => normalizeString(model))
+            .filter((model): model is string => Boolean(model))
+        : [id];
+      const remainingFraction = normalizeNumber(item.remainingFraction ?? item.remaining_fraction);
+      return {
+        id,
+        label,
+        models,
+        remainingFraction:
+          remainingFraction === null ? 0 : Math.max(0, Math.min(1, remainingFraction)),
+        resetTime: normalizeString(item.resetTime ?? item.reset_time) ?? undefined,
+      };
+    })
+    .filter((group): group is AntigravityQuotaGroup => group !== null);
+  const creditBalance = normalizeNumber(file.credit_balance);
+
+  if (groups.length === 0 && creditBalance === null) {
+    return undefined;
+  }
+  return {
+    status: 'success',
+    groups,
+    creditBalance,
+  };
+};
+
+const syncAntigravityQuotaDisplay = async (file: AuthFileItem, data: unknown) => {
+  if (!data || typeof data !== 'object') return;
+  const payload = data as { groups?: unknown[]; creditBalance?: number | string | null };
+  if (!Array.isArray(payload.groups) || payload.groups.length === 0) return;
+  await authFilesApi.syncQuotaDisplay(file.name, {
+    provider: 'antigravity',
+    antigravity_quota_groups: payload.groups,
+    credit_balance: payload.creditBalance,
+  });
+};
+
 export type AuthFileQuotaSectionProps = {
   file: AuthFileItem;
   quotaType: QuotaProviderType;
   disableControls: boolean;
 };
 
-export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
-  const { file, quotaType, disableControls } = props;
+export function useAuthFileQuotaRefresh(
+  file: AuthFileItem,
+  quotaType: QuotaProviderType | null,
+  disableControls: boolean
+) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
 
   const quota = useQuotaStore((state) => {
+    if (!quotaType) return undefined;
     if (quotaType === 'antigravity') return state.antigravityQuota[file.name] as QuotaState;
     if (quotaType === 'claude') return state.claudeQuota[file.name] as QuotaState;
     if (quotaType === 'codex') return state.codexQuota[file.name] as QuotaState;
@@ -53,8 +122,14 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     if (quotaType === 'github-copilot') return state.copilotQuota[file.name] as QuotaState;
     return state.geminiCliQuota[file.name] as QuotaState;
   });
+  const embeddedQuota =
+    quotaType === 'antigravity'
+      ? (buildEmbeddedAntigravityQuota(file) as QuotaState)
+      : undefined;
+  const effectiveQuota = quota ?? embeddedQuota;
 
   const updateQuotaState = useQuotaStore((state) => {
+    if (!quotaType) return noopQuotaStateUpdater;
     if (quotaType === 'antigravity') return state.setAntigravityQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'claude') return state.setClaudeQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'codex') return state.setCodexQuota as unknown as (updater: unknown) => void;
@@ -69,6 +144,7 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   }, []);
 
   const refreshQuotaForFile = useCallback(async () => {
+    if (!quotaType) return;
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
     if (file.disabled) return;
@@ -90,6 +166,9 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
 
     try {
       const data = await config.fetchQuota(file, t);
+      if (quotaType === 'antigravity') {
+        await syncAntigravityQuotaDisplay(file, data);
+      }
       updateQuotaState((prev: Record<string, unknown>) => ({
         ...prev,
         [file.name]: config.buildSuccessState(data)
@@ -108,17 +187,33 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     }
   }, [disableControls, file, quota?.status, quotaType, requestAuthFilesRefresh, showNotification, t, updateQuotaState]);
 
+  const quotaStatus = effectiveQuota?.status ?? 'idle';
+  const canRefreshQuota = Boolean(quotaType) && !disableControls && !file.disabled;
+
+  return {
+    quota: effectiveQuota,
+    quotaStatus,
+    canRefreshQuota,
+    refreshQuotaForFile,
+  };
+}
+
+export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
+  const { file, quotaType, disableControls } = props;
+  const { t } = useTranslation();
+  const { quota, quotaStatus, canRefreshQuota, refreshQuotaForFile } = useAuthFileQuotaRefresh(file, quotaType, disableControls);
   const config = getQuotaConfig(quotaType) as unknown as {
     i18nPrefix: string;
     renderQuotaItems: (quota: unknown, t: TFunction, helpers: unknown) => unknown;
   };
-
-  const quotaStatus = quota?.status ?? 'idle';
-  const canRefreshQuota = !disableControls && !file.disabled;
+  const quotaErrorStatus =
+    quota && typeof quota === 'object' && 'errorStatus' in quota ? quota.errorStatus : undefined;
+  const quotaError =
+    quota && typeof quota === 'object' && 'error' in quota ? quota.error : undefined;
   const quotaErrorMessage = resolveQuotaErrorMessage(
     t,
-    quota?.errorStatus,
-    quota?.error || t('common.unknown_error')
+    quotaErrorStatus,
+    quotaError || t('common.unknown_error')
   );
 
   return (

@@ -37,6 +37,7 @@ import type {
 import { apiCallApi, authFilesApi, getApiCallErrorMessage } from '@/services/api';
 import { useQuotaStore } from '@/stores';
 import {
+  ANTIGRAVITY_CODE_ASSIST_URLS,
   ANTIGRAVITY_QUOTA_URLS,
   ANTIGRAVITY_REQUEST_HEADERS,
   CLAUDE_PROFILE_URL,
@@ -106,6 +107,7 @@ type QuotaType =
   | 'github-copilot';
 
 const DEFAULT_ANTIGRAVITY_PROJECT_ID = 'bamboo-precept-lgxtn';
+const ANTIGRAVITY_G1_CREDIT_TYPE = 'GOOGLE_ONE_AI';
 const QUOTA_PROGRESS_HIGH_THRESHOLD = 70;
 const QUOTA_PROGRESS_MEDIUM_THRESHOLD = 30;
 const geminiCliSupplementaryRequestIds = new Map<string, number>();
@@ -185,7 +187,7 @@ const resolveAntigravityProjectId = async (file: AuthFileItem): Promise<string> 
 const fetchAntigravityQuota = async (
   file: AuthFileItem,
   t: TFunction
-): Promise<AntigravityQuotaGroup[]> => {
+): Promise<{ groups: AntigravityQuotaGroup[]; creditBalance: number | null }> => {
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndex = normalizeAuthIndex(rawAuthIndex);
   if (!authIndex) {
@@ -194,6 +196,7 @@ const fetchAntigravityQuota = async (
 
   const projectId = await resolveAntigravityProjectId(file);
   const requestBody = JSON.stringify({ project: projectId });
+  const creditBalancePromise = fetchAntigravityCreditBalance(authIndex);
 
   let lastError = '';
   let lastStatus: number | undefined;
@@ -233,7 +236,7 @@ const fetchAntigravityQuota = async (
         continue;
       }
 
-      return groups;
+      return { groups, creditBalance: await creditBalancePromise };
     } catch (err: unknown) {
       lastError = err instanceof Error ? err.message : t('common.unknown_error');
       const status = getStatusFromError(err);
@@ -247,10 +250,76 @@ const fetchAntigravityQuota = async (
   }
 
   if (hadSuccess) {
-    return [];
+    return { groups: [], creditBalance: await creditBalancePromise };
   }
 
   throw createStatusError(lastError || t('common.unknown_error'), priorityStatus ?? lastStatus);
+};
+
+const fetchAntigravityCreditBalance = async (authIndex: string): Promise<number | null> => {
+  const requestBody = JSON.stringify({
+    metadata: {
+      ideName: 'antigravity',
+      ideType: 'ANTIGRAVITY',
+      ideVersion: '1.23.2',
+      platform: 'DARWIN_ARM64',
+      pluginType: 'GEMINI',
+      pluginVersion: '0.22.17',
+      updateChannel: 'stable',
+    },
+    mode: 'FULL_ELIGIBILITY_CHECK',
+  });
+
+  for (const url of ANTIGRAVITY_CODE_ASSIST_URLS) {
+    try {
+      const result = await apiCallApi.request({
+        authIndex,
+        method: 'POST',
+        url,
+        header: { ...ANTIGRAVITY_REQUEST_HEADERS },
+        data: requestBody,
+      });
+
+      if (result.statusCode < 200 || result.statusCode >= 300) {
+        continue;
+      }
+
+      const payload = parseGeminiCliCodeAssistPayload(result.body ?? result.bodyText);
+      const balance = resolveAntigravityCreditBalance(payload);
+      if (balance !== null) return balance;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+};
+
+const resolveAntigravityCreditBalance = (
+  payload: GeminiCliCodeAssistPayload | null
+): number | null => {
+  if (!payload) return null;
+  const tiers = [
+    payload.paidTier ?? payload.paid_tier ?? null,
+    payload.currentTier ?? payload.current_tier ?? null,
+  ];
+
+  for (const tier of tiers) {
+    if (!tier) continue;
+    const credits = tier.availableCredits ?? tier.available_credits ?? [];
+    let total = 0;
+    let found = false;
+    for (const credit of credits) {
+      const creditType = normalizeStringValue(credit.creditType ?? credit.credit_type);
+      if (creditType !== ANTIGRAVITY_G1_CREDIT_TYPE) continue;
+      const amount = normalizeNumberValue(credit.creditAmount ?? credit.credit_amount);
+      if (amount === null) continue;
+      total += amount;
+      found = true;
+    }
+    if (found) return total;
+  }
+  return null;
 };
 
 const buildCodexQuotaWindows = (payload: CodexUsagePayload, t: TFunction): CodexQuotaWindow[] => {
@@ -722,14 +791,15 @@ const renderAntigravityItems = (
   helpers: QuotaRenderHelpers
 ): ReactNode => {
   const { styles: styleMap, QuotaProgressBar } = helpers;
-  const { createElement: h } = React;
+  const { createElement: h, Fragment } = React;
   const groups = quota.groups ?? [];
+  const creditBalance = quota.creditBalance ?? null;
 
-  if (groups.length === 0) {
+  if (groups.length === 0 && creditBalance === null) {
     return h('div', { className: styleMap.quotaMessage }, t('antigravity_quota.empty_models'));
   }
 
-  return groups.map((group) => {
+  const nodes = groups.map((group) => {
     const clamped = Math.max(0, Math.min(1, group.remainingFraction));
     const percent = Math.round(clamped * 100);
     const resetLabel = formatQuotaResetTime(group.resetTime);
@@ -755,6 +825,23 @@ const renderAntigravityItems = (
       })
     );
   });
+
+  if (creditBalance !== null) {
+    nodes.push(
+      h(
+        'div',
+        { key: 'credits', className: styleMap.codexPlan },
+        h('span', { className: styleMap.codexPlanLabel }, t('antigravity_quota.credit_label')),
+        h(
+          'span',
+          { className: styleMap.codexPlanValue },
+          t('antigravity_quota.credit_amount', { count: creditBalance })
+        )
+      )
+    );
+  }
+
+  return h(Fragment, null, ...nodes);
 };
 
 const PREMIUM_GEMINI_CLI_TIER_IDS = new Set(['g1-ultra-tier']);
@@ -1171,7 +1258,10 @@ export const CLAUDE_CONFIG: QuotaConfig<
   renderQuotaItems: renderClaudeItems,
 };
 
-export const ANTIGRAVITY_CONFIG: QuotaConfig<AntigravityQuotaState, AntigravityQuotaGroup[]> = {
+export const ANTIGRAVITY_CONFIG: QuotaConfig<
+  AntigravityQuotaState,
+  { groups: AntigravityQuotaGroup[]; creditBalance: number | null }
+> = {
   type: 'antigravity',
   i18nPrefix: 'antigravity_quota',
   cardIdleMessageKey: 'quota_management.card_idle_hint',
@@ -1180,7 +1270,11 @@ export const ANTIGRAVITY_CONFIG: QuotaConfig<AntigravityQuotaState, AntigravityQ
   storeSelector: (state) => state.antigravityQuota,
   storeSetter: 'setAntigravityQuota',
   buildLoadingState: () => ({ status: 'loading', groups: [] }),
-  buildSuccessState: (groups) => ({ status: 'success', groups }),
+  buildSuccessState: (data) => ({
+    status: 'success',
+    groups: data.groups,
+    creditBalance: data.creditBalance,
+  }),
   buildErrorState: (message, status) => ({
     status: 'error',
     groups: [],

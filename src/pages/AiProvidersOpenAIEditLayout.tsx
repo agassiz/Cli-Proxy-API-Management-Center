@@ -485,6 +485,12 @@ export function AiProvidersOpenAIEditLayout() {
       if (resolvedTestModel) payload.testModel = resolvedTestModel;
       const models = entriesToModels(form.modelEntries);
       if (models.length) payload.models = models;
+      if (editIndex !== null && initialData) {
+        if (initialData.disabled !== undefined) payload.disabled = initialData.disabled;
+        if (initialData.excludedModels !== undefined) {
+          payload.excludedModels = initialData.excludedModels;
+        }
+      }
 
       const nextList =
         editIndex !== null
