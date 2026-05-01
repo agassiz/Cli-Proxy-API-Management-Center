@@ -118,6 +118,7 @@ export function AuthFilesPage() {
     uploading,
     deleting,
     deletingAll,
+    clearingRuntimeErrors,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -126,6 +127,7 @@ export function AuthFilesPage() {
     handleFileChange,
     handleDelete,
     handleDeleteAll,
+    handleClearRuntimeErrors,
     handleDownload,
     handleStatusToggle,
     toggleSelect,
@@ -181,6 +183,7 @@ export function AuthFilesPage() {
   });
 
   const disableControls = connectionStatus !== 'connected';
+
   const normalizedFilter = normalizeProviderKey(String(filter));
   const quotaFilterType: QuotaProviderType | null = QUOTA_PROVIDER_TYPES.has(
     normalizedFilter as QuotaProviderType
@@ -427,8 +430,16 @@ export function AuthFilesPage() {
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
+    const compareSuperCategoryFirst = (a: (typeof filtered)[number], b: (typeof filtered)[number]) => {
+      const aSuper = a.super_category === true || a['super_category'] === true;
+      const bSuper = b.super_category === true || b['super_category'] === true;
+      if (aSuper === bSuper) return 0;
+      return aSuper ? -1 : 1;
+    };
     if (sortMode === 'default') {
       copy.sort((a, b) => {
+        const superCompare = compareSuperCategoryFirst(a, b);
+        if (superCompare !== 0) return superCompare;
         const providerA = normalizeProviderKey(String(a.provider ?? a.type ?? 'unknown'));
         const providerB = normalizeProviderKey(String(b.provider ?? b.type ?? 'unknown'));
         const providerCompare = providerA.localeCompare(providerB);
@@ -436,11 +447,13 @@ export function AuthFilesPage() {
         return a.name.localeCompare(b.name);
       });
     } else if (sortMode === 'az') {
-      copy.sort((a, b) => a.name.localeCompare(b.name));
+      copy.sort((a, b) => compareSuperCategoryFirst(a, b) || a.name.localeCompare(b.name));
     } else if (sortMode === 'priority') {
       copy.sort((a, b) => {
-        const pa = parsePriorityValue(a.priority) ?? 0;
-        const pb = parsePriorityValue(b.priority) ?? 0;
+        const superCompare = compareSuperCategoryFirst(a, b);
+        if (superCompare !== 0) return superCompare;
+        const pa = parsePriorityValue(a.priority ?? a['priority']) ?? 0;
+        const pb = parsePriorityValue(b.priority ?? b['priority']) ?? 0;
         return pb - pa; // 高优先级排前面
       });
     }
@@ -686,6 +699,15 @@ export function AuthFilesPage() {
           <div className={styles.headerActions}>
             <Button variant="secondary" size="sm" onClick={handleHeaderRefresh} disabled={loading}>
               {t('common.refresh')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleClearRuntimeErrors}
+              disabled={disableControls || loading || clearingRuntimeErrors}
+              loading={clearingRuntimeErrors}
+            >
+              {t('auth_files.clear_runtime_errors_button')}
             </Button>
             <Button
               size="sm"

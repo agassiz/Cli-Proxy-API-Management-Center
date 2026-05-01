@@ -21,6 +21,7 @@ import type {
   CodexUsageWindow,
   CodexQuotaWindow,
   CodexUsagePayload,
+  GeminiCliCodeAssistPayload,
   KiroBaseQuota,
   KiroFreeTrialQuota,
   KiroQuotaState,
@@ -40,6 +41,7 @@ import {
   type AntigravitySubscriptionSummary,
 } from '@/services/api';
 import {
+  ANTIGRAVITY_CODE_ASSIST_URLS,
   ANTIGRAVITY_QUOTA_URLS,
   ANTIGRAVITY_REQUEST_HEADERS,
   CLAUDE_PROFILE_URL,
@@ -108,8 +110,10 @@ type AntigravityQuotaData = {
   groups: AntigravityQuotaGroup[];
   subscription: AntigravityQuotaSubscription | null;
   serverTimeOffsetMs: number | null;
+  creditBalance: number | null;
 };
 
+const ANTIGRAVITY_G1_CREDIT_TYPE = 'GOOGLE_ONE_AI';
 const QUOTA_PROGRESS_HIGH_THRESHOLD = 70;
 const QUOTA_PROGRESS_MEDIUM_THRESHOLD = 30;
 
@@ -237,6 +241,7 @@ const fetchAntigravityQuota = async (
     .get(authIndex)
     .then(toAntigravityQuotaSubscription)
     .catch(() => null);
+  const creditBalancePromise = fetchAntigravityCreditBalance(authIndex);
 
   let lastError = '';
   let lastStatus: number | undefined;
@@ -281,6 +286,7 @@ const fetchAntigravityQuota = async (
         groups,
         subscription: await subscriptionPromise,
         serverTimeOffsetMs: resolveResponseServerTimeOffsetMs(result.header),
+        creditBalance: await creditBalancePromise,
       };
     } catch (err: unknown) {
       lastError = err instanceof Error ? err.message : t('common.unknown_error');
@@ -295,7 +301,12 @@ const fetchAntigravityQuota = async (
   }
 
   if (hadSuccess) {
-    return { groups: [], subscription: await subscriptionPromise, serverTimeOffsetMs: null };
+    return {
+      groups: [],
+      subscription: await subscriptionPromise,
+      serverTimeOffsetMs: null,
+      creditBalance: await creditBalancePromise,
+    };
   }
 
   throw createStatusError(lastError || t('common.unknown_error'), priorityStatus ?? lastStatus);
@@ -312,7 +323,92 @@ const toAntigravityQuotaSubscription = (
   };
 };
 
-const buildCodexQuotaWindows = (payload: CodexUsagePayload, t: TFunction): CodexQuotaWindow[] => {
+const parseAntigravityCodeAssistPayload = (
+  payload: unknown
+): GeminiCliCodeAssistPayload | null => {
+  if (payload === undefined || payload === null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as GeminiCliCodeAssistPayload;
+    } catch {
+      return null;
+    }
+  }
+  return typeof payload === 'object' ? (payload as GeminiCliCodeAssistPayload) : null;
+};
+
+const fetchAntigravityCreditBalance = async (authIndex: string): Promise<number | null> => {
+  const requestBody = JSON.stringify({
+    metadata: {
+      ideName: 'antigravity',
+      ideType: 'ANTIGRAVITY',
+      ideVersion: '1.23.2',
+      platform: 'DARWIN_ARM64',
+      pluginType: 'GEMINI',
+      pluginVersion: '0.22.17',
+      updateChannel: 'stable',
+    },
+    mode: 'FULL_ELIGIBILITY_CHECK',
+  });
+
+  for (const url of ANTIGRAVITY_CODE_ASSIST_URLS) {
+    try {
+      const result = await apiCallApi.request({
+        authIndex,
+        method: 'POST',
+        url,
+        header: { ...ANTIGRAVITY_REQUEST_HEADERS },
+        data: requestBody,
+      });
+
+      if (result.statusCode < 200 || result.statusCode >= 300) {
+        continue;
+      }
+
+      const payload = parseAntigravityCodeAssistPayload(result.body ?? result.bodyText);
+      const balance = resolveAntigravityCreditBalance(payload);
+      if (balance !== null) return balance;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+};
+
+const resolveAntigravityCreditBalance = (
+  payload: GeminiCliCodeAssistPayload | null
+): number | null => {
+  if (!payload) return null;
+  const tiers = [
+    payload.paidTier ?? payload.paid_tier ?? null,
+    payload.currentTier ?? payload.current_tier ?? null,
+  ];
+
+  for (const tier of tiers) {
+    if (!tier) continue;
+    const credits = tier.availableCredits ?? tier.available_credits ?? [];
+    let total = 0;
+    let found = false;
+    for (const credit of credits) {
+      const creditType = normalizeStringValue(credit.creditType ?? credit.credit_type);
+      if (creditType !== ANTIGRAVITY_G1_CREDIT_TYPE) continue;
+      const amount = normalizeNumberValue(credit.creditAmount ?? credit.credit_amount);
+      if (amount === null) continue;
+      total += amount;
+      found = true;
+    }
+    if (found) return total;
+  }
+  return null;
+};
+
+const buildCodexQuotaWindows = (
+  payload: CodexUsagePayload,
+  t: TFunction
+): CodexQuotaWindow[] => {
   const FIVE_HOUR_SECONDS = 18000;
   const WEEK_SECONDS = 604800;
   const MIN_MONTH_SECONDS = 28 * 24 * 60 * 60;
@@ -748,6 +844,7 @@ const renderAntigravityItems = (
   const { styles: styleMap, QuotaProgressBar } = helpers;
   const { createElement: h, Fragment } = React;
   const groups = quota.groups ?? [];
+  const creditBalance = quota.creditBalance ?? null;
   const nodes: ReactNode[] = [];
   const planLabel = getAntigravityPlanLabel(quota.subscription, t);
   const normalizedPlan = quota.subscription?.plan?.toLowerCase() ?? '';
@@ -772,21 +869,11 @@ const renderAntigravityItems = (
     );
   }
 
-  if (groups.length === 0) {
+  if (groups.length > 0) {
+    const nowMs = Date.now() + (quota.serverTimeOffsetMs ?? 0);
+
     nodes.push(
-      h(
-        'div',
-        { key: 'empty', className: styleMap.quotaMessage },
-        t('antigravity_quota.empty_models')
-      )
-    );
-    return h(Fragment, null, ...nodes);
-  }
-
-  const nowMs = Date.now() + (quota.serverTimeOffsetMs ?? 0);
-
-  nodes.push(
-    ...groups.map((group) => {
+      ...groups.map((group) => {
       const groupLabel = translateAntigravityQuotaLabel(
         group.label,
         ANTIGRAVITY_GROUP_LABEL_KEYS,
@@ -845,7 +932,31 @@ const renderAntigravityItems = (
         })
       );
     })
-  );
+    );
+  } else {
+    nodes.push(
+      h(
+        'div',
+        { key: 'empty', className: styleMap.quotaMessage },
+        t('antigravity_quota.empty_models')
+      )
+    );
+  }
+
+  if (creditBalance !== null) {
+    nodes.push(
+      h(
+        'div',
+        { key: 'credits', className: styleMap.codexPlan },
+        h('span', { className: styleMap.codexPlanLabel }, t('antigravity_quota.credit_label')),
+        h(
+          'span',
+          { className: styleMap.codexPlanValue },
+          t('antigravity_quota.credit_amount', { count: creditBalance })
+        )
+      )
+    );
+  }
 
   return h(Fragment, null, ...nodes);
 };
@@ -1219,18 +1330,21 @@ export const ANTIGRAVITY_CONFIG: QuotaConfig<AntigravityQuotaState, AntigravityQ
     groups: [],
     subscription: null,
     serverTimeOffsetMs: null,
+    creditBalance: null,
   }),
   buildSuccessState: (data) => ({
     status: 'success',
     groups: data.groups,
     subscription: data.subscription,
     serverTimeOffsetMs: data.serverTimeOffsetMs,
+    creditBalance: data.creditBalance,
   }),
   buildErrorState: (message, status) => ({
     status: 'error',
     groups: [],
     subscription: null,
     serverTimeOffsetMs: null,
+    creditBalance: null,
     error: message,
     errorStatus: status,
   }),

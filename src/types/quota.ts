@@ -8,6 +8,28 @@ export type TypeColorSet = { light: ThemeColors; dark?: ThemeColors };
 export type ResolvedTheme = 'light' | 'dark';
 
 // API payload types
+export interface GeminiCliCredits {
+  creditType?: string;
+  credit_type?: string;
+  creditAmount?: string | number;
+  credit_amount?: string | number;
+}
+
+export interface GeminiCliUserTier {
+  id?: string;
+  name?: string;
+  description?: string;
+  availableCredits?: GeminiCliCredits[];
+  available_credits?: GeminiCliCredits[];
+}
+
+export interface GeminiCliCodeAssistPayload {
+  currentTier?: GeminiCliUserTier | null;
+  current_tier?: GeminiCliUserTier | null;
+  paidTier?: GeminiCliUserTier | null;
+  paid_tier?: GeminiCliUserTier | null;
+}
+
 export interface AntigravityQuotaSummaryBucketPayload {
   bucketId?: string;
   bucket_id?: string;
@@ -171,6 +193,7 @@ export interface AntigravityQuotaState {
   groups: AntigravityQuotaGroup[];
   subscription?: AntigravityQuotaSubscription | null;
   serverTimeOffsetMs?: number | null;
+  creditBalance?: number | null;
   error?: string;
   errorStatus?: number;
 }

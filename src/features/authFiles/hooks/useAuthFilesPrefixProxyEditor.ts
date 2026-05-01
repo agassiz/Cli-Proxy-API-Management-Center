@@ -6,6 +6,9 @@ import { useNotificationStore } from '@/stores';
 import {
   applyCodexAuthFileWebsockets,
   normalizeProviderKey,
+  normalizeExcludedModels,
+  parseDisableCoolingValue,
+  parseExcludedModelsText,
   parsePriorityValue,
   readCodexAuthFileWebsockets,
 } from '@/features/authFiles/constants';
@@ -23,6 +26,9 @@ export type PrefixProxyEditorField =
   | 'prefix'
   | 'proxyUrl'
   | 'priority'
+  | 'excludedModelsText'
+  | 'disableCooling'
+  | 'superCategory'
   | 'websockets'
   | 'note'
   | 'headersText';
@@ -32,6 +38,8 @@ export type PrefixProxyEditorFieldValue = string | boolean;
 export type PrefixProxyEditorState = {
   fileName: string;
   fileInfoText: string;
+  isCodexFile: boolean;
+  superCategoryAllowed: boolean;
   loading: boolean;
   saving: boolean;
   error: string | null;
@@ -43,6 +51,9 @@ export type PrefixProxyEditorState = {
   prefix: string;
   proxyUrl: string;
   priority: string;
+  excludedModelsText: string;
+  disableCooling: string;
+  superCategory: boolean;
   websockets: boolean;
   websocketsTouched: boolean;
   note: string;
@@ -55,6 +66,7 @@ export type PrefixProxyEditorState = {
 export type UseAuthFilesPrefixProxyEditorOptions = {
   disableControls: boolean;
   loadFiles: () => Promise<void>;
+  loadKeyStats?: () => Promise<void>;
 };
 
 export type UseAuthFilesPrefixProxyEditorResult = {
@@ -248,6 +260,23 @@ const buildAuthFileFieldsPatch = (
     }
   }
 
+  const originalExcludedModels = normalizeExcludedModels(original.excluded_models);
+  const nextExcludedModels = parseExcludedModelsText(editor.excludedModelsText);
+  if (nextExcludedModels.join('\n') !== originalExcludedModels.join('\n')) {
+    patch.excluded_models = nextExcludedModels;
+  }
+
+  const originalDisableCooling = parseDisableCoolingValue(original.disable_cooling);
+  const nextDisableCooling = parseDisableCoolingValue(editor.disableCooling);
+  if (nextDisableCooling !== originalDisableCooling) {
+    patch.disable_cooling = nextDisableCooling ?? null;
+  }
+
+  const originalSuperCategory = editor.superCategoryAllowed && original.super_category === true;
+  if (editor.superCategoryAllowed && editor.superCategory !== originalSuperCategory) {
+    patch.super_category = editor.superCategory;
+  }
+
   if (editor.noteTouched) {
     const originalNote = normalizeTextField(original.note);
     const nextNote = editor.note.trim();
@@ -311,6 +340,30 @@ const buildPrefixProxyUpdatedText = (
     }
   }
 
+  if (patch.excluded_models !== undefined) {
+    if (patch.excluded_models.length > 0) {
+      next.excluded_models = patch.excluded_models;
+    } else {
+      delete next.excluded_models;
+    }
+  }
+
+  if (patch.disable_cooling !== undefined) {
+    if (patch.disable_cooling === null) {
+      delete next.disable_cooling;
+    } else {
+      next.disable_cooling = patch.disable_cooling;
+    }
+  }
+
+  if (patch.super_category !== undefined) {
+    if (patch.super_category) {
+      next.super_category = true;
+    } else {
+      delete next.super_category;
+    }
+  }
+
   if (patch.note !== undefined) {
     if (patch.note) {
       next.note = patch.note;
@@ -331,7 +384,7 @@ const buildPrefixProxyUpdatedText = (
 export function useAuthFilesPrefixProxyEditor(
   options: UseAuthFilesPrefixProxyEditorOptions
 ): UseAuthFilesPrefixProxyEditorResult {
-  const { disableControls, loadFiles } = options;
+  const { disableControls, loadFiles, loadKeyStats } = options;
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
 
@@ -359,6 +412,8 @@ export function useAuthFilesPrefixProxyEditor(
   const openPrefixProxyEditor = async (file: AuthFileItem) => {
     const name = file.name;
     const fileProviderKey = normalizeProviderKey(String(file.type ?? file.provider ?? ''));
+    const isCodexFile = fileProviderKey === 'codex';
+    const superCategoryAllowed = isCodexFile && file.super_category_allowed === true;
 
     if (disableControls) return;
     if (prefixProxyEditor?.fileName === name) {
@@ -369,6 +424,8 @@ export function useAuthFilesPrefixProxyEditor(
     setPrefixProxyEditor({
       fileName: name,
       fileInfoText: JSON.stringify(file, null, 2),
+      isCodexFile,
+      superCategoryAllowed,
       loading: true,
       saving: false,
       error: null,
@@ -380,6 +437,9 @@ export function useAuthFilesPrefixProxyEditor(
       prefix: '',
       proxyUrl: '',
       priority: '',
+      excludedModelsText: '',
+      disableCooling: '',
+      superCategory: false,
       websockets: false,
       websocketsTouched: false,
       note: '',
@@ -419,6 +479,11 @@ export function useAuthFilesPrefixProxyEditor(
       }
 
       const json = { ...(parsed as Record<string, unknown>) };
+      if (isCodexFile) {
+        const normalizedWebsockets = readCodexAuthFileWebsockets(json);
+        delete json.websocket;
+        json.websockets = normalizedWebsockets;
+      }
       const originalText = JSON.stringify(json);
       const providerKey = normalizeProviderKey(
         String(json.type ?? json.provider ?? file.type ?? file.provider ?? '')
@@ -426,6 +491,9 @@ export function useAuthFilesPrefixProxyEditor(
       const prefix = typeof json.prefix === 'string' ? json.prefix : '';
       const proxyUrl = typeof json.proxy_url === 'string' ? json.proxy_url : '';
       const priority = parsePriorityValue(json.priority);
+      const excludedModels = normalizeExcludedModels(json.excluded_models);
+      const disableCoolingValue = parseDisableCoolingValue(json.disable_cooling);
+      const superCategoryValue = superCategoryAllowed && json.super_category === true;
       const websockets = providerKey === 'codex' ? readCodexAuthFileWebsockets(json) : false;
       const note = typeof json.note === 'string' ? json.note : '';
       const headers = json.headers;
@@ -450,6 +518,10 @@ export function useAuthFilesPrefixProxyEditor(
           prefix,
           proxyUrl,
           priority: priority !== undefined ? String(priority) : '',
+          excludedModelsText: excludedModels.join('\n'),
+          disableCooling:
+            disableCoolingValue === undefined ? '' : disableCoolingValue ? 'true' : 'false',
+          superCategory: superCategoryValue,
           websockets,
           websocketsTouched: false,
           note,
@@ -479,6 +551,14 @@ export function useAuthFilesPrefixProxyEditor(
       if (field === 'prefix') return { ...prev, prefix: String(value) };
       if (field === 'proxyUrl') return { ...prev, proxyUrl: String(value) };
       if (field === 'priority') return { ...prev, priority: String(value) };
+      if (field === 'excludedModelsText') return { ...prev, excludedModelsText: String(value) };
+      if (field === 'disableCooling') return { ...prev, disableCooling: String(value) };
+      if (field === 'superCategory') {
+        return {
+          ...prev,
+          superCategory: Boolean(value),
+        };
+      }
       if (field === 'websockets') {
         return { ...prev, websockets: Boolean(value), websocketsTouched: true };
       }
@@ -493,7 +573,7 @@ export function useAuthFilesPrefixProxyEditor(
           headersError: errorKey ? t(errorKey) : null,
         };
       }
-      return prev;
+      return { ...prev, websockets: Boolean(value) };
     });
   };
 
@@ -521,6 +601,7 @@ export function useAuthFilesPrefixProxyEditor(
       await authFilesApi.patchFields(name, payload);
       showNotification(t('auth_files.prefix_proxy_saved_success', { name }), 'success');
       await loadFiles();
+      await loadKeyStats?.();
       setPrefixProxyEditor(null);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '';

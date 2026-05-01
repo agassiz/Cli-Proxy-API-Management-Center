@@ -49,6 +49,12 @@ export interface AuthFileItem {
   recent_requests?: RecentRequestBucket[];
   recentRequests?: RecentRequestBucket[];
   credential_issues?: Record<string, CredentialIssue>;
+  credit_balance?: number | string | null;
+  credit_available?: boolean;
+  credit_min_amount?: number | string | null;
+  credit_paid_tier_id?: string;
+  credit_updated_at?: string;
+  antigravity_quota_groups?: unknown[];
   [key: string]: unknown;
 }
 

@@ -11,7 +11,12 @@ import {
   COPILOT_CONFIG,
 } from '@/components/quota';
 import { useNotificationStore, useQuotaStore } from '@/stores';
-import type { AuthFileItem } from '@/types';
+import type {
+  AntigravityQuotaBucket,
+  AntigravityQuotaGroup,
+  AntigravityQuotaState,
+  AuthFileItem,
+} from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import {
   isRuntimeOnlyAuthFile,
@@ -21,9 +26,11 @@ import {
 import { Button } from '@/components/ui/Button';
 import { IconRefreshCw } from '@/components/ui/icons';
 import { QuotaProgressBar } from '@/features/authFiles/components/QuotaProgressBar';
+import { authFilesApi } from '@/services/api';
 import styles from '@/pages/AuthFilesPage.module.scss';
 
 type QuotaState = { status?: string; error?: string; errorStatus?: number } | undefined;
+const noopQuotaStateUpdater = (() => undefined) as unknown as (updater: unknown) => void;
 
 const assertNever = (value: never): never => {
   throw new Error(`Unsupported quota type: ${value}`);
@@ -40,20 +47,116 @@ const getQuotaConfig = (type: QuotaProviderType) => {
   return assertNever(type);
 };
 
+const normalizeNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const normalizeString = (value: unknown): string | null => {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+const buildEmbeddedAntigravityQuota = (file: AuthFileItem): AntigravityQuotaState | undefined => {
+  const rawGroups = Array.isArray(file.antigravity_quota_groups)
+    ? file.antigravity_quota_groups
+    : [];
+  const groups = rawGroups
+    .map((raw): AntigravityQuotaGroup | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const item = raw as Record<string, unknown>;
+      const id = normalizeString(item.id) ?? normalizeString(item.label);
+      const label = normalizeString(item.label) ?? id;
+      if (!id || !label) return null;
+      const rawBuckets = Array.isArray(item.buckets) ? item.buckets : [];
+      const buckets = rawBuckets
+        .map((rawBucket, bucketIndex): AntigravityQuotaBucket | null => {
+          if (!rawBucket || typeof rawBucket !== 'object') return null;
+          const bucket = rawBucket as Record<string, unknown>;
+          const bucketId =
+            normalizeString(bucket.id ?? bucket.bucketId ?? bucket.bucket_id) ??
+            `${id}-${bucketIndex + 1}`;
+          const bucketLabel = normalizeString(bucket.label ?? bucket.displayName) ?? bucketId;
+          const remainingFraction = normalizeNumber(
+            bucket.remainingFraction ?? bucket.remaining_fraction
+          );
+          if (remainingFraction === null) return null;
+          return {
+            id: bucketId,
+            label: bucketLabel,
+            window: normalizeString(bucket.window) ?? undefined,
+            remainingFraction: Math.max(0, Math.min(1, remainingFraction)),
+            resetTime: normalizeString(bucket.resetTime ?? bucket.reset_time) ?? undefined,
+            description: normalizeString(bucket.description) ?? undefined,
+          };
+        })
+        .filter((bucket): bucket is AntigravityQuotaBucket => bucket !== null);
+      const legacyRemainingFraction = normalizeNumber(
+        item.remainingFraction ?? item.remaining_fraction
+      );
+      if (buckets.length === 0 && legacyRemainingFraction === null) return null;
+      return {
+        id,
+        label,
+        description: normalizeString(item.description) ?? undefined,
+        buckets:
+          buckets.length > 0
+            ? buckets
+            : [
+                {
+                  id: `${id}-quota`,
+                  label,
+                  remainingFraction: Math.max(0, Math.min(1, legacyRemainingFraction ?? 0)),
+                  resetTime: normalizeString(item.resetTime ?? item.reset_time) ?? undefined,
+                },
+              ],
+      };
+    })
+    .filter((group): group is AntigravityQuotaGroup => group !== null);
+  const creditBalance = normalizeNumber(file.credit_balance);
+
+  if (groups.length === 0 && creditBalance === null) {
+    return undefined;
+  }
+  return {
+    status: 'success',
+    groups,
+    creditBalance,
+  };
+};
+
+const syncAntigravityQuotaDisplay = async (file: AuthFileItem, data: unknown) => {
+  if (!data || typeof data !== 'object') return;
+  const payload = data as { groups?: unknown[]; creditBalance?: number | string | null };
+  if (!Array.isArray(payload.groups) || payload.groups.length === 0) return;
+  await authFilesApi.syncQuotaDisplay(file.name, {
+    provider: 'antigravity',
+    antigravity_quota_groups: payload.groups,
+    credit_balance: payload.creditBalance,
+  });
+};
+
 export type AuthFileQuotaSectionProps = {
   file: AuthFileItem;
   quotaType: QuotaProviderType;
   disableControls: boolean;
 };
 
-export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
-  const { file, quotaType, disableControls } = props;
+export function useAuthFileQuotaRefresh(
+  file: AuthFileItem,
+  quotaType: QuotaProviderType | null,
+  disableControls: boolean
+) {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const [resettingQuota, setResettingQuota] = useState(false);
 
   const quota = useQuotaStore((state) => {
+    if (!quotaType) return undefined;
     if (quotaType === 'antigravity') return state.antigravityQuota[file.name] as QuotaState;
     if (quotaType === 'claude') return state.claudeQuota[file.name] as QuotaState;
     if (quotaType === 'codex') return state.codexQuota[file.name] as QuotaState;
@@ -63,12 +166,16 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     if (quotaType === 'github-copilot') return state.copilotQuota[file.name] as QuotaState;
     return assertNever(quotaType);
   });
+  const embeddedQuota =
+    quotaType === 'antigravity'
+      ? (buildEmbeddedAntigravityQuota(file) as QuotaState)
+      : undefined;
+  const effectiveQuota = quota ?? embeddedQuota;
 
   const updateQuotaState = useQuotaStore((state) => {
-    if (quotaType === 'antigravity')
-      return state.setAntigravityQuota as unknown as (updater: unknown) => void;
-    if (quotaType === 'claude')
-      return state.setClaudeQuota as unknown as (updater: unknown) => void;
+    if (!quotaType) return noopQuotaStateUpdater;
+    if (quotaType === 'antigravity') return state.setAntigravityQuota as unknown as (updater: unknown) => void;
+    if (quotaType === 'claude') return state.setClaudeQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'codex') return state.setCodexQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'kimi') return state.setKimiQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'xai') return state.setXaiQuota as unknown as (updater: unknown) => void;
@@ -83,6 +190,7 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   }, []);
 
   const refreshQuotaForFile = useCallback(async () => {
+    if (!quotaType) return;
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
     if (file.disabled) return;
@@ -104,6 +212,9 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
 
     try {
       const data = await config.fetchQuota(file, t);
+      if (quotaType === 'antigravity') {
+        await syncAntigravityQuotaDisplay(file, data);
+      }
       updateQuotaState((prev: Record<string, unknown>) => ({
         ...prev,
         [file.name]: config.buildSuccessState(data),
@@ -123,10 +234,11 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   }, [disableControls, file, quota?.status, quotaType, requestAuthFilesRefresh, showNotification, t, updateQuotaState]);
 
   const resetQuotaForFile = useCallback(() => {
+    if (!quotaType) return;
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
     if (file.disabled) return;
-    if (quota?.status === 'loading') return;
+    if (effectiveQuota?.status === 'loading') return;
     if (resettingQuota) return;
 
     const config = getQuotaConfig(quotaType) as unknown as {
@@ -160,8 +272,8 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     });
   }, [
     disableControls,
+    effectiveQuota?.status,
     file,
-    quota?.status,
     quotaType,
     resettingQuota,
     showConfirmation,
@@ -170,15 +282,36 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     updateQuotaState,
   ]);
 
+  const quotaStatus = effectiveQuota?.status ?? 'idle';
+  const canRefreshQuota = Boolean(quotaType) && !disableControls && !file.disabled && !resettingQuota;
+
+  return {
+    quota: effectiveQuota,
+    quotaStatus,
+    canRefreshQuota,
+    refreshQuotaForFile,
+    resetQuotaForFile,
+    resettingQuota,
+  };
+}
+
+export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
+  const { file, quotaType, disableControls } = props;
+  const { t } = useTranslation();
+  const {
+    quota,
+    quotaStatus,
+    canRefreshQuota,
+    refreshQuotaForFile,
+    resetQuotaForFile,
+    resettingQuota,
+  } = useAuthFileQuotaRefresh(file, quotaType, disableControls);
   const config = getQuotaConfig(quotaType) as unknown as {
     i18nPrefix: string;
     resetQuota?: (file: AuthFileItem, t: TFunction) => Promise<unknown>;
     canResetQuota?: (quota: unknown) => boolean;
     renderQuotaItems: (quota: unknown, t: TFunction, helpers: unknown) => unknown;
   };
-
-  const quotaStatus = quota?.status ?? 'idle';
-  const canRefreshQuota = !disableControls && !file.disabled && !resettingQuota;
   const canUseResetQuota = canRefreshQuota && quotaStatus !== 'loading';
   const showResetQuotaAction = quota !== undefined && Boolean(config.canResetQuota?.(quota));
   const resetQuotaAction = config.resetQuota && showResetQuotaAction ? (
@@ -197,10 +330,14 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
       {t('codex_quota.reset_button')}
     </Button>
   ) : undefined;
+  const quotaErrorStatus =
+    quota && typeof quota === 'object' && 'errorStatus' in quota ? quota.errorStatus : undefined;
+  const quotaError =
+    quota && typeof quota === 'object' && 'error' in quota ? quota.error : undefined;
   const quotaErrorMessage = resolveQuotaErrorMessage(
     t,
-    quota?.errorStatus,
-    quota?.error || t('common.unknown_error')
+    quotaErrorStatus,
+    quotaError || t('common.unknown_error')
   );
 
   return (
