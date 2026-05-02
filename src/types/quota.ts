@@ -332,6 +332,7 @@ export interface KiroSubscriptionInfo {
   subscriptionTitle: string;
   type?: string;
   overageCapability?: string;
+  subscriptionManagementTarget?: string;
   upgradeCapability?: string;
 }
 
@@ -346,15 +347,24 @@ export interface KiroUsageBreakdown {
   resourceType: string;
   usageLimitWithPrecision: number;
   currentUsageWithPrecision: number;
+  currentOverages?: number;
+  currentOveragesWithPrecision?: number;
   nextDateReset?: number;
   freeTrialInfo?: KiroFreeTrialInfo;
-  overageRate?: number;
-  currency?: string;
+  overageCap?: number;
+  overageCapWithPrecision?: number;
+  displayName?: string;
+  displayNamePlural?: string;
+}
+
+export interface KiroOverageConfiguration {
+  overageStatus?: string;
 }
 
 export interface KiroQuotaPayload {
   daysUntilReset?: number;
   nextDateReset: number;
+  overageConfiguration?: KiroOverageConfiguration;
   subscriptionInfo: KiroSubscriptionInfo;
   usageBreakdownList: KiroUsageBreakdown[];
   userInfo?: { userId: string };
@@ -379,11 +389,19 @@ export interface KiroFreeTrialQuota {
   status: string;
 }
 
+export interface KiroOverageQuota {
+  status: string | null;
+  currentOverages: number | null;
+  cap: number | null;
+  unitLabel: string | null;
+}
+
 export interface KiroQuotaState {
   status: 'idle' | 'loading' | 'success' | 'error';
   subscriptionTitle: string | null;
   baseQuota: KiroBaseQuota | null;
   freeTrialQuota: KiroFreeTrialQuota | null;
+  overageQuota: KiroOverageQuota | null;
   error?: string;
   errorStatus?: number;
 }

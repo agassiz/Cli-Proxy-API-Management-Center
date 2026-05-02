@@ -8,20 +8,31 @@ import {
   normalizeManagementOAuthProviderKey,
 } from '@/utils/providerKeys';
 
-export type BuiltInOAuthProvider = 'codex' | 'anthropic' | 'antigravity' | 'kimi' | 'xai';
+export type BuiltInOAuthProvider =
+  | 'codex'
+  | 'anthropic'
+  | 'antigravity'
+  | 'kimi'
+  | 'xai'
+  | 'kiro';
 
 export type OAuthProvider = string;
 
 export interface OAuthStartResponse {
-  url: string;
+  url?: string;
   state?: string;
 }
+
+export type OAuthStatusResponse =
+  | { status: 'ok' | 'wait' | 'error'; error?: string }
+  | { status: 'device_code'; verification_url: string; user_code: string }
+  | { status: 'auth_url'; url: string };
 
 export interface OAuthCallbackResponse {
   status: 'ok';
 }
 
-const WEBUI_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai']);
+const WEBUI_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'kiro', 'xai']);
 
 const normalizeProviderForManagementPath = (provider: string): string => {
   const key = normalizeManagementOAuthProviderKey(provider);
@@ -44,7 +55,7 @@ export const oauthApi = {
   },
 
   getAuthStatus: (state: string) =>
-    apiClient.get<{ status: 'ok' | 'wait' | 'error'; error?: string }>(`/get-auth-status`, {
+    apiClient.get<OAuthStatusResponse>(`/get-auth-status`, {
       params: { state },
     }),
 

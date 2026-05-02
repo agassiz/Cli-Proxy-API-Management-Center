@@ -16,6 +16,13 @@ export type VisualConfigFieldPath =
   | 'maxRetryCredentials'
   | 'maxRetryInterval'
   | 'authAutoRefreshWorkers'
+  | 'kiroPerAccountRpmLimit'
+  | 'kiroFreeRpmLimit'
+  | 'kiroProRpmLimit'
+  | 'kiroBaseCooldownSeconds'
+  | 'kiroMaxCooldownSeconds'
+  | 'kiroConsecutiveErrorCooldownThreshold'
+  | 'kiroConsecutiveErrorDisableThreshold'
   | 'streaming.keepaliveSeconds'
   | 'streaming.bootstrapRetries'
   | 'streaming.nonstreamKeepaliveInterval';
@@ -101,13 +108,15 @@ export type VisualConfigValues = {
   debug: boolean;
   commercialMode: boolean;
   loggingToFile: boolean;
+  usageStatisticsEnabled: boolean;
   logsMaxTotalSizeMb: string;
   errorLogsMaxFiles: string;
-  usageStatisticsEnabled: boolean;
   redisUsageQueueRetentionSeconds: string;
   proxyUrl: string;
   forceModelPrefix: boolean;
+  codexForceSuperCategory: boolean;
   passthroughHeaders: boolean;
+  hideUpstreamErrorDetails: boolean;
   requestRetry: string;
   maxRetryCredentials: string;
   maxRetryInterval: string;
@@ -134,6 +143,18 @@ export type VisualConfigValues = {
   codexHeaderUserAgent: string;
   codexHeaderBetaFeatures: string;
   codexIdentityConfuse: boolean;
+  augmentSilentModeModel: string;
+  augmentImageFallbackModel: string;
+  augmentShowThinkingProgress: boolean;
+  kiroPerAccountRpmLimit: string;
+  kiroFreeRpmLimit: string;
+  kiroProRpmLimit: string;
+  kiroCooldownStrategy: 'linear' | 'fixed' | 'exponential';
+  kiroBaseCooldownSeconds: string;
+  kiroMaxCooldownSeconds: string;
+  kiroConsecutiveErrorCooldownThreshold: string;
+  kiroConsecutiveErrorDisableThreshold: string;
+  kiroInvalidAuthAutoDisable: boolean;
   payloadDefaultRules: PayloadRule[];
   payloadDefaultRawRules: PayloadRule[];
   payloadOverrideRules: PayloadRule[];
@@ -166,13 +187,15 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   debug: false,
   commercialMode: false,
   loggingToFile: false,
+  usageStatisticsEnabled: false,
   logsMaxTotalSizeMb: '',
   errorLogsMaxFiles: '',
-  usageStatisticsEnabled: false,
   redisUsageQueueRetentionSeconds: '',
   proxyUrl: '',
   forceModelPrefix: false,
+  codexForceSuperCategory: false,
   passthroughHeaders: false,
+  hideUpstreamErrorDetails: false,
   requestRetry: '',
   maxRetryCredentials: '',
   maxRetryInterval: '',
@@ -199,6 +222,18 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   codexHeaderUserAgent: '',
   codexHeaderBetaFeatures: '',
   codexIdentityConfuse: false,
+  augmentSilentModeModel: '',
+  augmentImageFallbackModel: '',
+  augmentShowThinkingProgress: false,
+  kiroPerAccountRpmLimit: '20',
+  kiroFreeRpmLimit: '',
+  kiroProRpmLimit: '',
+  kiroCooldownStrategy: 'linear',
+  kiroBaseCooldownSeconds: '300',
+  kiroMaxCooldownSeconds: '1800',
+  kiroConsecutiveErrorCooldownThreshold: '5',
+  kiroConsecutiveErrorDisableThreshold: '20',
+  kiroInvalidAuthAutoDisable: true,
   payloadDefaultRules: [],
   payloadDefaultRawRules: [],
   payloadOverrideRules: [],

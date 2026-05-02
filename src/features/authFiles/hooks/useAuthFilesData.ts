@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { authFilesApi } from '@/services/api';
 import { apiClient } from '@/services/api/client';
+import { usageApi } from '@/services/api/usage';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import { formatFileSize } from '@/utils/format';
@@ -40,6 +41,7 @@ export type UseAuthFilesDataResult = {
   deleting: string | null;
   deletingAll: boolean;
   clearingRuntimeErrors: boolean;
+  clearingUsageStats: boolean;
   statusUpdating: Record<string, boolean>;
   batchStatusUpdating: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -49,6 +51,7 @@ export type UseAuthFilesDataResult = {
   handleDelete: (name: string) => void;
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleClearRuntimeErrors: () => void;
+  handleClearUsageStats: () => void;
   handleDownload: (name: string) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   toggleSelect: (name: string) => void;
@@ -71,6 +74,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [clearingRuntimeErrors, setClearingRuntimeErrors] = useState(false);
+  const [clearingUsageStats, setClearingUsageStats] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -510,6 +514,33 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     });
   }, [loadFiles, showConfirmation, showNotification, t]);
 
+  const handleClearUsageStats = useCallback(() => {
+    showConfirmation({
+      title: t('auth_files.clear_usage_stats_title'),
+      message: t('auth_files.clear_usage_stats_confirm'),
+      variant: 'danger',
+      confirmText: t('common.confirm'),
+      onConfirm: async () => {
+        setClearingUsageStats(true);
+        try {
+          const result = await usageApi.clearUsage();
+          showNotification(
+            result.removed
+              ? t('auth_files.clear_usage_stats_success')
+              : t('auth_files.clear_usage_stats_none'),
+            result.removed ? 'success' : 'info'
+          );
+          await loadFiles();
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '';
+          showNotification(`${t('notification.update_failed')}: ${errorMessage}`, 'error');
+        } finally {
+          setClearingUsageStats(false);
+        }
+      },
+    });
+  }, [loadFiles, showConfirmation, showNotification, t]);
+
   const handleStatusToggle = useCallback(
     async (item: AuthFileItem, enabled: boolean) => {
       const name = item.name;
@@ -730,6 +761,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     deleting,
     deletingAll,
     clearingRuntimeErrors,
+    clearingUsageStats,
     statusUpdating,
     batchStatusUpdating,
     fileInputRef,
@@ -739,6 +771,7 @@ export function useAuthFilesData(): UseAuthFilesDataResult {
     handleDelete,
     handleDeleteAll,
     handleClearRuntimeErrors,
+    handleClearUsageStats,
     handleDownload,
     handleStatusToggle,
     toggleSelect,

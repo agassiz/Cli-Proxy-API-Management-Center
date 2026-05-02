@@ -25,7 +25,18 @@ const resolveCodexAuthInfo = (value: unknown): Record<string, unknown> | null =>
 export function extractCodexChatgptAccountId(value: unknown): string | null {
   const payload = parseIdTokenPayload(value);
   if (!payload) return null;
-  return normalizeStringValue(payload.chatgpt_account_id ?? payload.chatgptAccountId);
+  const authInfo =
+    payload['https://api.openai.com/auth'] &&
+    typeof payload['https://api.openai.com/auth'] === 'object' &&
+    !Array.isArray(payload['https://api.openai.com/auth'])
+      ? (payload['https://api.openai.com/auth'] as Record<string, unknown>)
+      : null;
+  return normalizeStringValue(
+    payload.chatgpt_account_id ??
+      payload.chatgptAccountId ??
+      authInfo?.chatgpt_account_id ??
+      authInfo?.chatgptAccountId
+  );
 }
 
 export function resolveCodexChatgptAccountId(file: AuthFileItem): string | null {
@@ -38,9 +49,29 @@ export function resolveCodexChatgptAccountId(file: AuthFileItem): string | null 
       ? (file.attributes as Record<string, unknown>)
       : null;
 
-  const candidates = [file.id_token, metadata?.id_token, attributes?.id_token];
+  const directCandidates = [
+    file.chatgpt_account_id,
+    file.chatgptAccountId,
+    file.account_id,
+    file.accountId,
+    metadata?.chatgpt_account_id,
+    metadata?.chatgptAccountId,
+    metadata?.account_id,
+    metadata?.accountId,
+    attributes?.chatgpt_account_id,
+    attributes?.chatgptAccountId,
+    attributes?.account_id,
+    attributes?.accountId
+  ];
 
-  for (const candidate of candidates) {
+  for (const candidate of directCandidates) {
+    const id = normalizeStringValue(candidate);
+    if (id) return id;
+  }
+
+  const tokenCandidates = [file.id_token, metadata?.id_token, attributes?.id_token];
+
+  for (const candidate of tokenCandidates) {
     const id = extractCodexChatgptAccountId(candidate);
     if (id) return id;
   }

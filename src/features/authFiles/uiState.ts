@@ -18,6 +18,7 @@ export type AuthFilesUiState = {
   statusFilterMode?: AuthFilesStatusFilterMode;
   issueFilter?: string;
   compactMode?: boolean;
+  hideErrors?: boolean;
   search?: string;
   page?: number;
   pageSize?: number;

@@ -27,6 +27,7 @@ import {
   IconSidebarStore,
   IconSidebarSystem,
   IconChevronDown,
+  IconSidebarUsage,
 } from '@/components/ui/icons';
 import { INLINE_LOGO_JPEG } from '@/assets/logoInline';
 import {
@@ -57,6 +58,7 @@ const sidebarIcons: Record<string, ReactNode> = {
   quota: <IconSidebarQuota size={18} />,
   plugins: <IconSidebarPlugins size={18} />,
   pluginStore: <IconSidebarStore size={18} />,
+  usage: <IconSidebarUsage size={18} />,
   config: <IconSidebarConfig size={18} />,
   logs: <IconSidebarLogs size={18} />,
   system: <IconSidebarSystem size={18} />,
@@ -306,9 +308,9 @@ export function MainLayout() {
   const apiBase = useAuthStore((state) => state.apiBase);
   const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
 
+  const config = useConfigStore((state) => state.config);
   const fetchConfig = useConfigStore((state) => state.fetchConfig);
   const clearCache = useConfigStore((state) => state.clearCache);
-  const config = useConfigStore((state) => state.config);
 
   const theme = useThemeStore((state) => state.theme);
   const setTheme = useThemeStore((state) => state.setTheme);
@@ -572,11 +574,21 @@ export function MainLayout() {
           icon: sidebarIcons.quota,
         },
         {
-          path: '/logs',
-          labelKey: 'nav.logs',
-          metaKey: 'nav_meta.logs',
-          icon: sidebarIcons.logs,
+          path: '/usage',
+          labelKey: 'nav.usage_stats',
+          metaKey: 'nav_meta.usage_stats',
+          icon: sidebarIcons.usage,
         },
+        ...(config?.loggingToFile
+          ? [
+              {
+                path: '/logs',
+                labelKey: 'nav.logs',
+                metaKey: 'nav_meta.logs',
+                icon: sidebarIcons.logs,
+              },
+            ]
+          : []),
       ],
     },
     {

@@ -18,6 +18,7 @@ import iconClaude from '@/assets/icons/claude.svg';
 import iconAntigravity from '@/assets/icons/antigravity.svg';
 import iconKimiLight from '@/assets/icons/kimi-light.svg';
 import iconKimiDark from '@/assets/icons/kimi-dark.svg';
+import iconKiro from '@/assets/icons/kiro.svg';
 import iconVertex from '@/assets/icons/vertex.svg';
 import iconGrok from '@/assets/icons/grok.svg';
 import iconGrokDark from '@/assets/icons/grok-dark.svg';
@@ -32,6 +33,7 @@ interface ProviderState {
   callbackSubmitting?: boolean;
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
+  userCode?: string;
 }
 
 interface VertexImportResult {
@@ -113,6 +115,14 @@ const PROVIDERS: BuiltInOAuthProviderCard[] = [
     hintKey: 'auth_login.xai_oauth_hint',
     urlLabelKey: 'auth_login.xai_oauth_url_label',
     icon: { light: iconGrok, dark: iconGrokDark },
+  },
+  {
+    kind: 'builtin',
+    id: 'kiro',
+    titleKey: 'auth_login.kiro_oauth_title',
+    hintKey: 'auth_login.kiro_oauth_hint',
+    urlLabelKey: 'auth_login.kiro_oauth_url_label',
+    icon: iconKiro,
   },
 ];
 
@@ -377,6 +387,7 @@ export function OAuthPage() {
       callbackSubmitting: false,
       callbackStatus: undefined,
       callbackError: undefined,
+      userCode: undefined,
     });
     successResetTimers.current[provider] = window.setTimeout(() => {
       resetProviderAttempt(provider);
@@ -399,6 +410,20 @@ export function OAuthPage() {
           );
           window.clearInterval(timer);
           delete pollingTimers.current[provider];
+        } else if (res.status === 'device_code') {
+          updateProviderState(provider, {
+            url: res.verification_url,
+            userCode: res.user_code,
+            status: 'waiting',
+            polling: true,
+          });
+        } else if (res.status === 'auth_url') {
+          updateProviderState(provider, {
+            url: res.url,
+            userCode: undefined,
+            status: 'waiting',
+            polling: true,
+          });
         }
       } catch (err: unknown) {
         updateProviderState(provider, {
@@ -424,6 +449,7 @@ export function OAuthPage() {
       callbackStatus: undefined,
       callbackError: undefined,
       callbackUrl: '',
+      userCode: undefined,
     });
     try {
       const res = await oauthApi.startAuth(provider);
@@ -435,6 +461,7 @@ export function OAuthPage() {
           status: 'error',
           error: message,
           polling: false,
+          userCode: undefined,
         });
         showNotification(message, 'error');
         return;
@@ -444,6 +471,7 @@ export function OAuthPage() {
         state: res.state,
         status: 'waiting',
         polling: true,
+        userCode: undefined,
       });
       startPolling(provider, res.state);
     } catch (err: unknown) {
@@ -620,6 +648,14 @@ export function OAuthPage() {
                         {getProviderText(provider, 'oauth_url_label')}
                       </div>
                       <div className={styles.authUrlValue}>{state.url}</div>
+                      {state.userCode && (
+                        <>
+                          <div className={styles.authUrlLabel}>
+                            {t('auth_login.kiro_user_code_label')}
+                          </div>
+                          <div className={styles.authUrlValue}>{state.userCode}</div>
+                        </>
+                      )}
                       <div className={styles.authUrlActions}>
                         <Button variant="secondary" size="sm" onClick={() => copyLink(state.url!)}>
                           {getProviderText(provider, 'copy_link')}

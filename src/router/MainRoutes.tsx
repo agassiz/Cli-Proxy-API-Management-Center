@@ -9,6 +9,7 @@ import { QuotaPage } from '@/pages/QuotaPage';
 import { PluginResourcePage } from '@/features/plugins/PluginResourcePage';
 import { PluginsPage } from '@/features/plugins/PluginsPage';
 import { PluginStorePage } from '@/features/plugins/PluginStorePage';
+import { UsagePage } from '@/pages/UsagePage';
 import { ConfigPage } from '@/pages/ConfigPage';
 import { LogsPage } from '@/pages/LogsPage';
 import { SystemPage } from '@/pages/SystemPage';
@@ -40,6 +41,7 @@ const createMainRoutes = (supportsPlugin: boolean) => [
         { path: '/plugins/*', element: <Navigate to="/" replace /> },
         { path: '/plugin-store', element: <Navigate to="/" replace /> },
       ]),
+  { path: '/usage', element: <UsagePage /> },
   { path: '/config', element: <ConfigPage /> },
   { path: '/logs', element: <LogsPage /> },
   { path: '/system', element: <SystemPage /> },

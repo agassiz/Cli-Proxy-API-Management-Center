@@ -20,6 +20,18 @@ export const configApi = {
    */
   getRawConfig: () => apiClient.get('/config'),
 
+  async getCodexSuperCategoryAllowed(): Promise<boolean> {
+    const data = await apiClient.get<Record<string, unknown>>('/license');
+    if (typeof data?.super_category_allowed === 'boolean') {
+      return data.super_category_allowed;
+    }
+    const license = data?.license;
+    if (license && typeof license === 'object' && !Array.isArray(license)) {
+      return Boolean((license as Record<string, unknown>).valid);
+    }
+    return false;
+  },
+
   /**
    * 更新 Debug 模式
    */
@@ -52,6 +64,12 @@ export const configApi = {
    */
   updateSwitchPreviewModel: (enabled: boolean) =>
     apiClient.put('/quota-exceeded/switch-preview-model', { value: enabled }),
+
+  /**
+   * 使用统计开关
+   */
+  updateUsageStatistics: (enabled: boolean) =>
+    apiClient.put('/usage-statistics-enabled', { value: enabled }),
 
   /**
    * 请求日志开关
@@ -96,6 +114,20 @@ export const configApi = {
    */
   updateForceModelPrefix: (enabled: boolean) =>
     apiClient.put('/force-model-prefix', { value: enabled }),
+
+  /**
+   * 获取隐藏上游错误详情开关
+   */
+  async getHideUpstreamErrorDetails(): Promise<boolean> {
+    const data = await apiClient.get<Record<string, unknown>>('/hide-upstream-error-details');
+    return Boolean(data?.['hide-upstream-error-details'] ?? false);
+  },
+
+  /**
+   * 更新隐藏上游错误详情开关
+   */
+  updateHideUpstreamErrorDetails: (enabled: boolean) =>
+    apiClient.put('/hide-upstream-error-details', { value: enabled }),
 
   /**
    * 获取路由策略
