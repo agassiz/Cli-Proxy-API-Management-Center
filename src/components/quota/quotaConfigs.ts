@@ -24,6 +24,7 @@ import type {
   GeminiCliCodeAssistPayload,
   KiroBaseQuota,
   KiroFreeTrialQuota,
+  KiroOverageQuota,
   KiroQuotaState,
   KimiQuotaRow,
   KimiQuotaState,
@@ -1699,6 +1700,7 @@ interface KiroQuotaData {
   subscriptionTitle: string | null;
   baseQuota: KiroBaseQuota | null;
   freeTrialQuota: KiroFreeTrialQuota | null;
+  overageQuota: KiroOverageQuota | null;
 }
 
 const formatKiroResetTime = (timestamp: number | undefined): string => {
@@ -1712,10 +1714,47 @@ const formatKiroResetTime = (timestamp: number | undefined): string => {
   return `${month}/${day} ${hours}:${minutes}`;
 };
 
-const fetchKiroQuota = async (
-  file: AuthFileItem,
-  t: TFunction
-): Promise<KiroQuotaData> => {
+const formatKiroNumber = (value: number | null | undefined, digits = 2): string => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits,
+  }).format(value);
+};
+
+const resolveKiroOverageQuota = (
+  payload: NonNullable<ReturnType<typeof parseKiroQuotaPayload>>,
+  usageBreakdown:
+    | NonNullable<ReturnType<typeof parseKiroQuotaPayload>>['usageBreakdownList'][number]
+    | undefined
+): KiroOverageQuota | null => {
+  const status = normalizeStringValue(payload.overageConfiguration?.overageStatus);
+  if (status?.toUpperCase() !== 'ENABLED') {
+    return null;
+  }
+
+  const currentOverages = normalizeNumberValue(
+    usageBreakdown?.currentOveragesWithPrecision ?? usageBreakdown?.currentOverages
+  );
+  const cap = normalizeNumberValue(
+    usageBreakdown?.overageCapWithPrecision ?? usageBreakdown?.overageCap
+  );
+  const unitLabel = normalizeStringValue(
+    usageBreakdown?.displayNamePlural ?? usageBreakdown?.displayName
+  );
+
+  if (!status && currentOverages === null && cap === null) {
+    return null;
+  }
+
+  return {
+    status,
+    currentOverages,
+    cap,
+    unitLabel,
+  };
+};
+
+const fetchKiroQuota = async (file: AuthFileItem, t: TFunction): Promise<KiroQuotaData> => {
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
   const authIndex = normalizeAuthIndex(rawAuthIndex);
   if (!authIndex) {
@@ -1748,6 +1787,7 @@ const fetchKiroQuota = async (
 
   let baseQuota: KiroBaseQuota | null = null;
   let freeTrialQuota: KiroFreeTrialQuota | null = null;
+  const overageQuota = resolveKiroOverageQuota(payload, usageBreakdown);
 
   if (usageBreakdown) {
     const limit = normalizeNumberValue(usageBreakdown.usageLimitWithPrecision);
@@ -1776,7 +1816,7 @@ const fetchKiroQuota = async (
     }
   }
 
-  return { subscriptionTitle, baseQuota, freeTrialQuota };
+  return { subscriptionTitle, baseQuota, freeTrialQuota, overageQuota };
 };
 
 const renderKiroItems = (
@@ -1795,6 +1835,53 @@ const renderKiroItems = (
         { key: 'subscription', className: styleMap.codexPlan },
         h('span', { className: styleMap.codexPlanLabel }, t('kiro_quota.subscription_label')),
         h('span', { className: styleMap.codexPlanValue }, quota.subscriptionTitle)
+      )
+    );
+  }
+
+  if (quota.overageQuota) {
+    const overage = quota.overageQuota;
+    const unitLabel =
+      overage.unitLabel && !/^credits?$/i.test(overage.unitLabel)
+        ? overage.unitLabel
+        : t('kiro_quota.overage_unit');
+    const used = Math.max(0, overage.currentOverages ?? 0);
+    const cap = Math.max(0, overage.cap ?? 0);
+    const remaining = Math.max(0, cap - used);
+    const remainingPercent =
+      cap > 0 ? Math.max(0, Math.min(100, Math.round((remaining / cap) * 100))) : null;
+    const amountLabel =
+      overage.currentOverages === null && overage.cap === null
+        ? '-'
+        : `${formatKiroNumber(remaining)} / ${cap > 0 ? formatKiroNumber(cap, 0) : '-'} ${unitLabel}`;
+
+    nodes.push(
+      h(
+        'div',
+        { key: 'overage-usage', className: styleMap.quotaRow },
+        h(
+          'div',
+          { className: styleMap.quotaRowHeader },
+          h('span', { className: styleMap.quotaModel }, t('kiro_quota.overage_usage')),
+          h(
+            'div',
+            { className: styleMap.quotaMeta },
+            h(
+              'span',
+              { className: styleMap.quotaPercent },
+              remainingPercent === null ? '--' : `${remainingPercent}%`
+            ),
+            h('span', { className: styleMap.quotaAmount }, amountLabel)
+          )
+        ),
+        h(
+          'div',
+          { className: styleMap.quotaBar },
+          h('div', {
+            className: styleMap.quotaBarFill,
+            style: { width: `${remainingPercent ?? 0}%` },
+          })
+        )
       )
     );
   }
@@ -1887,18 +1974,21 @@ export const KIRO_CONFIG: QuotaConfig<KiroQuotaState, KiroQuotaData> = {
     subscriptionTitle: null,
     baseQuota: null,
     freeTrialQuota: null,
+    overageQuota: null,
   }),
   buildSuccessState: (data) => ({
     status: 'success',
     subscriptionTitle: data.subscriptionTitle,
     baseQuota: data.baseQuota,
     freeTrialQuota: data.freeTrialQuota,
+    overageQuota: data.overageQuota,
   }),
   buildErrorState: (message, status) => ({
     status: 'error',
     subscriptionTitle: null,
     baseQuota: null,
     freeTrialQuota: null,
+    overageQuota: null,
     error: message,
     errorStatus: status,
   }),

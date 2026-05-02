@@ -21,6 +21,7 @@ import {
   statusBarDataFromRecentRequests,
 } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
+import { parseTimestampMs } from '@/utils/timestamp';
 import {
   QUOTA_PROVIDER_TYPES,
   formatModified,
@@ -46,6 +47,7 @@ const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'a
 export type AuthFileCardProps = {
   file: AuthFileItem;
   compact: boolean;
+  hideErrors?: boolean;
   selected: boolean;
   resolvedTheme: ResolvedTheme;
   disableControls: boolean;
@@ -72,6 +74,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const {
     file,
     compact,
+    hideErrors = false,
     selected,
     resolvedTheme,
     disableControls,
@@ -139,6 +142,16 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const isCodexFile = String(file.type ?? file.provider ?? '').trim().toLowerCase() === 'codex';
   const canUseSuperCategory = isCodexFile && file.super_category_allowed === true;
   const isSuperCategory = canUseSuperCategory && (file.super_category === true || file['super_category'] === true);
+  const cooldownUntilMs = parseTimestampMs(file.cooldown_until ?? file['cooldownUntil']);
+  // 反重力凭证的冷却是按模型维度的，凭证级别不显示「冷却中」
+  const isAntigravityProvider = providerKey === 'antigravity';
+  const isCooldownActive =
+    !isAntigravityProvider &&
+    file.cooldown_active === true &&
+    (!Number.isFinite(cooldownUntilMs) || cooldownUntilMs > Date.now());
+  const cooldownTitle = Number.isFinite(cooldownUntilMs)
+    ? t('auth_files.cooldown_until', { time: new Date(cooldownUntilMs).toLocaleString() })
+    : t('auth_files.cooldown_active');
   const stateLabel = isRuntimeOnly
     ? t('auth_files.type_virtual') || '虚拟认证文件'
     : file.disabled
@@ -203,6 +216,14 @@ export function AuthFileCard(props: AuthFileCardProps) {
                   {typeLabel}
                 </span>
                 <span className={`${styles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                {isCooldownActive && (
+                  <span
+                    className={`${styles.stateBadge} ${styles.stateBadgeCooldown}`}
+                    title={cooldownTitle}
+                  >
+                    {t('auth_files.cooldown_active')}
+                  </span>
+                )}
                 {isSuperCategory && (
                   <span className={`${styles.stateBadge} ${styles.stateBadgeSuper}`}>
                     ⚡ {t('auth_files.super_category_display')}
@@ -242,7 +263,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
             )}
           </div>
 
-          {rawStatusMessage && hasStatusWarning && (
+          {rawStatusMessage && hasStatusWarning && !hideErrors && (
             <div className={styles.healthStatusMessage} title={rawStatusMessage}>
               <IconInfo className={styles.messageIcon} size={14} />
               <span>{rawStatusMessage}</span>

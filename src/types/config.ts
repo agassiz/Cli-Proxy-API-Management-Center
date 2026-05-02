@@ -9,6 +9,7 @@ export interface QuotaExceededConfig {
   switchProject?: boolean;
   switchPreviewModel?: boolean;
   antigravityCredits?: boolean;
+  antigravityCreditsModels?: string[];
 }
 
 export interface Config {
@@ -18,9 +19,11 @@ export interface Config {
   quotaExceeded?: QuotaExceededConfig;
   requestLog?: boolean;
   loggingToFile?: boolean;
+  usageStatisticsEnabled?: boolean;
   logsMaxTotalSizeMb?: number;
   wsAuth?: boolean;
   forceModelPrefix?: boolean;
+  hideUpstreamErrorDetails?: boolean;
   routingStrategy?: string;
   apiKeys?: string[];
   geminiApiKeys?: GeminiKeyConfig[];
@@ -39,9 +42,11 @@ export type RawConfigSection =
   | 'quota-exceeded'
   | 'request-log'
   | 'logging-to-file'
+  | 'usage-statistics-enabled'
   | 'logs-max-total-size-mb'
   | 'ws-auth'
   | 'force-model-prefix'
+  | 'hide-upstream-error-details'
   | 'routing/strategy'
   | 'api-keys'
   | 'gemini-api-key'

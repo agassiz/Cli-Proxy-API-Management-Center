@@ -8,7 +8,9 @@ export type OAuthProvider =
   | 'codex'
   | 'anthropic'
   | 'antigravity'
-  | 'kimi';
+  | 'kimi'
+  | 'xai'
+  | 'kiro';
 
 // OAuth 流程状态
 export interface OAuthFlow {

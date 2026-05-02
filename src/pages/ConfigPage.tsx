@@ -28,6 +28,7 @@ import { useActionBarHeightVar } from '@/hooks/useActionBarHeightVar';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { useVisualConfig } from '@/hooks/useVisualConfig';
 import { useNotificationStore, useAuthStore, useThemeStore, useConfigStore } from '@/stores';
+import { configApi } from '@/services/api/config';
 import { configFileApi } from '@/services/api/configFile';
 import styles from './ConfigPage.module.scss';
 
@@ -89,6 +90,7 @@ export function ConfigPage() {
   const [diffModalOpen, setDiffModalOpen] = useState(false);
   const [serverYaml, setServerYaml] = useState('');
   const [mergedYaml, setMergedYaml] = useState('');
+  const [codexSuperCategoryAllowed, setCodexSuperCategoryAllowed] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,11 +130,13 @@ export function ConfigPage() {
     setError('');
     try {
       const data = await configFileApi.fetchConfigYaml();
+      const superCategoryAllowed = await configApi.getCodexSuperCategoryAllowed().catch(() => false);
       setContent(data);
       setDirty(false);
       setDiffModalOpen(false);
       setServerYaml(data);
       setMergedYaml(data);
+      setCodexSuperCategoryAllowed(superCategoryAllowed);
       loadVisualValuesFromYaml(data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('notification.refresh_failed');
@@ -565,6 +569,7 @@ export function ConfigPage() {
               values={visualValues}
               validationErrors={visualValidationErrors}
               hasPayloadValidationErrors={visualHasPayloadValidationErrors}
+              codexSuperCategoryAllowed={codexSuperCategoryAllowed}
               disabled={disableControls || loading}
               onChange={setVisualValues}
             />

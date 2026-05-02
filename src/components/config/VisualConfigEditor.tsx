@@ -66,6 +66,7 @@ interface VisualConfigEditorProps {
   values: VisualConfigValues;
   validationErrors?: VisualConfigValidationErrors;
   hasPayloadValidationErrors?: boolean;
+  codexSuperCategoryAllowed?: boolean;
   disabled?: boolean;
   onChange: (values: Partial<VisualConfigValues>) => void;
 }
