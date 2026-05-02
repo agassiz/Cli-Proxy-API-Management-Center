@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -40,7 +41,18 @@ import {
 } from './VisualConfigEditorBlocks';
 import styles from './VisualConfigEditor.module.scss';
 
-type VisualSectionId = 'server' | 'auth' | 'system' | 'quota' | 'streaming' | 'payload';
+type VisualSectionId =
+  | 'server'
+  | 'tls'
+  | 'remote'
+  | 'auth'
+  | 'system'
+  | 'network'
+  | 'quota'
+  | 'augment'
+  | 'kiro'
+  | 'streaming'
+  | 'payload';
 
 type VisualSection = {
   id: VisualSectionId;
@@ -167,10 +179,14 @@ export function VisualConfigEditor({
   const pageTransitionLayer = usePageTransitionLayer();
   const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.isCurrentLayer : true;
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const isFloatingSidebar = useMediaQuery('(min-width: 1025px)');
+  const shouldRenderFloatingSidebar = !isMobile && isFloatingSidebar && isCurrentLayer;
   const routingStrategyLabelId = useId();
   const routingStrategyHintId = `${routingStrategyLabelId}-hint`;
   const disableImageGenerationLabelId = useId();
   const disableImageGenerationHintId = `${disableImageGenerationLabelId}-hint`;
+  const kiroCooldownStrategyLabelId = useId();
+  const kiroCooldownStrategyHintId = `${kiroCooldownStrategyLabelId}-hint`;
   const keepaliveInputId = useId();
   const keepaliveHintId = `${keepaliveInputId}-hint`;
   const keepaliveErrorId = `${keepaliveInputId}-error`;
@@ -178,6 +194,9 @@ export function VisualConfigEditor({
   const nonstreamKeepaliveHintId = `${nonstreamKeepaliveInputId}-hint`;
   const nonstreamKeepaliveErrorId = `${nonstreamKeepaliveInputId}-error`;
   const [activeSectionId, setActiveSectionId] = useState<VisualSectionId>('server');
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const sidebarAnchorRef = useRef<HTMLElement | null>(null);
+  const floatingSidebarRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Partial<Record<VisualSectionId, HTMLElement | null>>>({});
   const mobileNavScrollerRef = useRef<HTMLDivElement | null>(null);
   const mobileNavButtonRefs = useRef<Partial<Record<VisualSectionId, HTMLButtonElement | null>>>(
@@ -203,6 +222,28 @@ export function VisualConfigEditor({
   const authAutoRefreshWorkersError = getValidationMessage(
     t,
     validationErrors?.authAutoRefreshWorkers
+  );
+  const kiroPerAccountRpmLimitError = getValidationMessage(
+    t,
+    validationErrors?.kiroPerAccountRpmLimit
+  );
+  const kiroFreeRpmLimitError = getValidationMessage(t, validationErrors?.kiroFreeRpmLimit);
+  const kiroProRpmLimitError = getValidationMessage(t, validationErrors?.kiroProRpmLimit);
+  const kiroBaseCooldownSecondsError = getValidationMessage(
+    t,
+    validationErrors?.kiroBaseCooldownSeconds
+  );
+  const kiroMaxCooldownSecondsError = getValidationMessage(
+    t,
+    validationErrors?.kiroMaxCooldownSeconds
+  );
+  const kiroConsecutiveErrorCooldownThresholdError = getValidationMessage(
+    t,
+    validationErrors?.kiroConsecutiveErrorCooldownThreshold
+  );
+  const kiroConsecutiveErrorDisableThresholdError = getValidationMessage(
+    t,
+    validationErrors?.kiroConsecutiveErrorDisableThreshold
   );
   const keepaliveError = getValidationMessage(t, validationErrors?.['streaming.keepaliveSeconds']);
   const bootstrapRetriesError = getValidationMessage(
@@ -307,6 +348,28 @@ export function VisualConfigEditor({
         ]),
       },
       {
+        id: 'augment',
+        title: t('config_management.visual.sections.augment.title'),
+        description: t('config_management.visual.sections.augment.description'),
+        icon: IconCode,
+        errorCount: 0,
+      },
+      {
+        id: 'kiro',
+        title: t('config_management.visual.sections.kiro.title'),
+        description: t('config_management.visual.sections.kiro.description'),
+        icon: IconTimer,
+        errorCount: countErrors([
+          'kiroPerAccountRpmLimit',
+          'kiroFreeRpmLimit',
+          'kiroProRpmLimit',
+          'kiroBaseCooldownSeconds',
+          'kiroMaxCooldownSeconds',
+          'kiroConsecutiveErrorCooldownThreshold',
+          'kiroConsecutiveErrorDisableThreshold',
+        ]),
+      },
+      {
         id: 'payload',
         title: t('config_management.visual.sections.payload.title'),
         icon: IconCode,
@@ -376,6 +439,103 @@ export function VisualConfigEditor({
       inline: 'start',
     });
   }, []);
+
+
+  useLayoutEffect(() => {
+    const floatingElement = floatingSidebarRef.current;
+    const anchorElement = sidebarAnchorRef.current;
+    const workspaceElement = workspaceRef.current;
+    if (!floatingElement) return undefined;
+
+    const clearFloatingStyles = () => {
+      floatingElement.style.removeProperty('transform');
+      floatingElement.style.removeProperty('width');
+      floatingElement.style.removeProperty('max-height');
+      floatingElement.style.removeProperty('opacity');
+      floatingElement.style.removeProperty('pointer-events');
+    };
+
+    if (!shouldRenderFloatingSidebar || !anchorElement || !workspaceElement) {
+      clearFloatingStyles();
+      return undefined;
+    }
+
+    /* ---- Cache header height – recomputed only on resize ---- */
+    const computeHeaderHeight = () => {
+      const header = document.querySelector('.main-header') as HTMLElement | null;
+      if (header) return header.getBoundingClientRect().height;
+
+      const raw = getComputedStyle(document.documentElement).getPropertyValue('--header-height');
+      const parsed = Number.parseFloat(raw);
+      return Number.isFinite(parsed) ? parsed : 64;
+    };
+    let headerHeight = computeHeaderHeight();
+
+    /* ---- Cache content scroller – resolved once ---- */
+    const contentScroller = document.querySelector('.content') as HTMLElement | null;
+
+    /* ---- Cache floating height from previous frame ---- */
+    let cachedFloatingHeight = floatingElement.getBoundingClientRect().height || 200;
+
+    let frameId = 0;
+
+    const updateFloatingPosition = () => {
+      frameId = 0;
+
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const workspaceRect = workspaceElement.getBoundingClientRect();
+      const stickyTop = headerHeight + 20;
+      const viewportPadding = 16;
+      const maxTop = workspaceRect.bottom - cachedFloatingHeight;
+      const unclampedTop = Math.min(Math.max(anchorRect.top, stickyTop), maxTop);
+      const top = Math.max(unclampedTop, viewportPadding);
+      const left = Math.max(anchorRect.left, viewportPadding);
+      const width = Math.max(
+        Math.min(anchorRect.width, window.innerWidth - left - viewportPadding),
+        220
+      );
+      const maxHeight = Math.max(window.innerHeight - top - viewportPadding, 160);
+      const isVisible =
+        workspaceRect.bottom > stickyTop + 24 && anchorRect.top < window.innerHeight;
+
+      floatingElement.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+      floatingElement.style.width = `${width}px`;
+      floatingElement.style.maxHeight = `${maxHeight}px`;
+      floatingElement.style.opacity = isVisible ? '1' : '0';
+      floatingElement.style.pointerEvents = isVisible ? 'auto' : 'none';
+    };
+
+    const requestPositionUpdate = () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(updateFloatingPosition);
+    };
+
+    const handleResize = () => {
+      headerHeight = computeHeaderHeight();
+      cachedFloatingHeight = floatingElement.getBoundingClientRect().height || cachedFloatingHeight;
+      requestPositionUpdate();
+    };
+
+    requestPositionUpdate();
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', requestPositionUpdate, { passive: true });
+    contentScroller?.addEventListener('scroll', requestPositionUpdate, { passive: true });
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(requestPositionUpdate);
+    resizeObserver?.observe(anchorElement);
+    resizeObserver?.observe(workspaceElement);
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', requestPositionUpdate);
+      contentScroller?.removeEventListener('scroll', requestPositionUpdate);
+      clearFloatingStyles();
+    };
+  }, [shouldRenderFloatingSidebar]);
 
   const navContent = (
     <div className={styles.navList}>
@@ -657,6 +817,13 @@ export function VisualConfigEditor({
                   checked={values.loggingToFile}
                   disabled={disabled}
                   onChange={(loggingToFile) => onChange({ loggingToFile })}
+                />
+                <ToggleRow
+                  title={t('config_management.visual.sections.system.usage_statistics')}
+                  description={t('config_management.visual.sections.system.usage_statistics_desc')}
+                  checked={values.usageStatisticsEnabled}
+                  disabled={disabled}
+                  onChange={(usageStatisticsEnabled) => onChange({ usageStatisticsEnabled })}
                 />
               </SectionGrid>
 
@@ -1025,6 +1192,7 @@ export function VisualConfigEditor({
               />
               <ToggleRow
                 title={t('config_management.visual.sections.quota.antigravity_credits')}
+                description={t('config_management.visual.sections.quota.antigravity_credits_desc')}
                 checked={values.quotaAntigravityCredits}
                 disabled={disabled}
                 onChange={(quotaAntigravityCredits) => onChange({ quotaAntigravityCredits })}
@@ -1134,11 +1302,196 @@ export function VisualConfigEditor({
           </ConfigSection>
 
           <ConfigSection
+            id="augment"
+            ref={(node) => {
+              sectionRefs.current.augment = node;
+            }}
+            indexLabel="09"
+            icon={<IconCode size={16} />}
+            title={t('config_management.visual.sections.augment.title')}
+            description={t('config_management.visual.sections.augment.description')}
+          >
+            <SectionStack>
+              <SectionGrid>
+                <Input
+                  label={t('config_management.visual.sections.augment.silent_mode_model')}
+                  placeholder="gpt-5.5"
+                  value={values.augmentSilentModeModel}
+                  onChange={(e) => onChange({ augmentSilentModeModel: e.target.value })}
+                  disabled={disabled}
+                  hint={t('config_management.visual.sections.augment.silent_mode_model_hint')}
+                />
+                <Input
+                  label={t('config_management.visual.sections.augment.image_fallback_model')}
+                  placeholder="gpt-5.5"
+                  value={values.augmentImageFallbackModel}
+                  onChange={(e) => onChange({ augmentImageFallbackModel: e.target.value })}
+                  disabled={disabled}
+                  hint={t('config_management.visual.sections.augment.image_fallback_model_hint')}
+                />
+                <ToggleRow
+                  title={t('config_management.visual.sections.augment.show_thinking_progress')}
+                  description={t(
+                    'config_management.visual.sections.augment.show_thinking_progress_desc'
+                  )}
+                  checked={values.augmentShowThinkingProgress}
+                  disabled={disabled}
+                  onChange={(augmentShowThinkingProgress) =>
+                    onChange({ augmentShowThinkingProgress })
+                  }
+                />
+              </SectionGrid>
+            </SectionStack>
+          </ConfigSection>
+
+          <ConfigSection
+            id="kiro"
+            ref={(node) => {
+              sectionRefs.current.kiro = node;
+            }}
+            indexLabel="10"
+            icon={<IconTimer size={16} />}
+            title={t('config_management.visual.sections.kiro.title')}
+            description={t('config_management.visual.sections.kiro.description')}
+          >
+            <SectionStack>
+              <SectionSubsection title={t('config_management.visual.sections.kiro.rate_cooling')}>
+                <SectionGrid>
+                  <Input
+                    label={t('config_management.visual.sections.kiro.per_account_rpm_limit')}
+                    type="number"
+                    placeholder="20"
+                    value={values.kiroPerAccountRpmLimit}
+                    onChange={(e) => onChange({ kiroPerAccountRpmLimit: e.target.value })}
+                    disabled={disabled}
+                    hint={t('config_management.visual.sections.kiro.per_account_rpm_limit_hint')}
+                    error={kiroPerAccountRpmLimitError}
+                  />
+                  <Input
+                    label={t('config_management.visual.sections.kiro.free_rpm_limit')}
+                    type="number"
+                    placeholder="10"
+                    value={values.kiroFreeRpmLimit}
+                    onChange={(e) => onChange({ kiroFreeRpmLimit: e.target.value })}
+                    disabled={disabled}
+                    hint={t('config_management.visual.sections.kiro.tier_rpm_limit_hint')}
+                    error={kiroFreeRpmLimitError}
+                  />
+                  <Input
+                    label={t('config_management.visual.sections.kiro.pro_rpm_limit')}
+                    type="number"
+                    placeholder="60"
+                    value={values.kiroProRpmLimit}
+                    onChange={(e) => onChange({ kiroProRpmLimit: e.target.value })}
+                    disabled={disabled}
+                    hint={t('config_management.visual.sections.kiro.tier_rpm_limit_hint')}
+                    error={kiroProRpmLimitError}
+                  />
+                  <FieldShell
+                    label={t('config_management.visual.sections.kiro.cooldown_strategy')}
+                    labelId={kiroCooldownStrategyLabelId}
+                    hint={t('config_management.visual.sections.kiro.cooldown_strategy_hint')}
+                    hintId={kiroCooldownStrategyHintId}
+                  >
+                    <Select
+                      value={values.kiroCooldownStrategy}
+                      options={[
+                        {
+                          value: 'linear',
+                          label: t('config_management.visual.sections.kiro.strategy_linear'),
+                        },
+                        {
+                          value: 'fixed',
+                          label: t('config_management.visual.sections.kiro.strategy_fixed'),
+                        },
+                        {
+                          value: 'exponential',
+                          label: t('config_management.visual.sections.kiro.strategy_exponential'),
+                        },
+                      ]}
+                      id={`${kiroCooldownStrategyLabelId}-select`}
+                      disabled={disabled}
+                      ariaLabelledBy={kiroCooldownStrategyLabelId}
+                      ariaDescribedBy={kiroCooldownStrategyHintId}
+                      onChange={(nextValue) =>
+                        onChange({
+                          kiroCooldownStrategy:
+                            nextValue as VisualConfigValues['kiroCooldownStrategy'],
+                        })
+                      }
+                    />
+                  </FieldShell>
+                  <Input
+                    label={t('config_management.visual.sections.kiro.base_cooldown_seconds')}
+                    type="number"
+                    placeholder="300"
+                    value={values.kiroBaseCooldownSeconds}
+                    onChange={(e) => onChange({ kiroBaseCooldownSeconds: e.target.value })}
+                    disabled={disabled}
+                    error={kiroBaseCooldownSecondsError}
+                  />
+                  <Input
+                    label={t('config_management.visual.sections.kiro.max_cooldown_seconds')}
+                    type="number"
+                    placeholder="1800"
+                    value={values.kiroMaxCooldownSeconds}
+                    onChange={(e) => onChange({ kiroMaxCooldownSeconds: e.target.value })}
+                    disabled={disabled}
+                    error={kiroMaxCooldownSecondsError}
+                  />
+                  <Input
+                    label={t(
+                      'config_management.visual.sections.kiro.consecutive_error_cooldown_threshold'
+                    )}
+                    type="number"
+                    placeholder="5"
+                    value={values.kiroConsecutiveErrorCooldownThreshold}
+                    onChange={(e) =>
+                      onChange({ kiroConsecutiveErrorCooldownThreshold: e.target.value })
+                    }
+                    disabled={disabled}
+                    error={kiroConsecutiveErrorCooldownThresholdError}
+                  />
+                </SectionGrid>
+              </SectionSubsection>
+
+              <Divider />
+
+              <SectionSubsection title={t('config_management.visual.sections.kiro.failover')}>
+                <SectionGrid>
+                  <Input
+                    label={t(
+                      'config_management.visual.sections.kiro.consecutive_error_disable_threshold'
+                    )}
+                    type="number"
+                    placeholder="20"
+                    value={values.kiroConsecutiveErrorDisableThreshold}
+                    onChange={(e) =>
+                      onChange({ kiroConsecutiveErrorDisableThreshold: e.target.value })
+                    }
+                    disabled={disabled}
+                    hint={t('config_management.visual.sections.kiro.disable_threshold_hint')}
+                    error={kiroConsecutiveErrorDisableThresholdError}
+                  />
+                  <ToggleRow
+                    title={t('config_management.visual.sections.kiro.invalid_auth_auto_disable')}
+                    checked={values.kiroInvalidAuthAutoDisable}
+                    disabled={disabled}
+                    onChange={(kiroInvalidAuthAutoDisable) =>
+                      onChange({ kiroInvalidAuthAutoDisable })
+                    }
+                  />
+                </SectionGrid>
+              </SectionSubsection>
+            </SectionStack>
+          </ConfigSection>
+
+          <ConfigSection
             id="payload"
             ref={(node) => {
               sectionRefs.current.payload = node;
             }}
-            indexLabel="06"
+            indexLabel="11"
             icon={<IconCode size={16} />}
             title={t('config_management.visual.sections.payload.title')}
             description={t('config_management.visual.sections.payload.description')}

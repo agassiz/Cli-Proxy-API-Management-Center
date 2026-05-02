@@ -8,15 +8,21 @@ import {
   GEMINI_CLI_CONFIG,
   KIMI_CONFIG,
   KIRO_CONFIG,
-  COPILOT_CONFIG
+  COPILOT_CONFIG,
 } from '@/components/quota';
 import { useNotificationStore, useQuotaStore } from '@/stores';
-import type { AntigravityQuotaGroup, AntigravityQuotaState, AuthFileItem } from '@/types';
-import { getStatusFromError } from '@/utils/quota';
+import type {
+  AntigravityQuotaGroup,
+  AntigravityQuotaState,
+  AuthFileItem,
+  CodexQuotaState,
+  KiroQuotaState,
+} from '@/types';
+import { getStatusFromError, normalizePlanType, resolveCodexPlanType } from '@/utils/quota';
 import {
   isRuntimeOnlyAuthFile,
   resolveQuotaErrorMessage,
-  type QuotaProviderType
+  type QuotaProviderType,
 } from '@/features/authFiles/constants';
 import { QuotaProgressBar } from '@/features/authFiles/components/QuotaProgressBar';
 import { authFilesApi } from '@/services/api';
@@ -24,6 +30,7 @@ import styles from '@/pages/AuthFilesPage.module.scss';
 
 type QuotaState = { status?: string; error?: string; errorStatus?: number } | undefined;
 const noopQuotaStateUpdater = (() => undefined) as unknown as (updater: unknown) => void;
+const PREMIUM_CODEX_PLAN_TYPES = new Set(['pro', 'prolite', 'pro-lite', 'pro_lite']);
 
 const getQuotaConfig = (type: QuotaProviderType) => {
   if (type === 'antigravity') return ANTIGRAVITY_CONFIG;
@@ -87,6 +94,79 @@ const buildEmbeddedAntigravityQuota = (file: AuthFileItem): AntigravityQuotaStat
   };
 };
 
+const resolveKiroSubscriptionTitle = (file: AuthFileItem): string | null => {
+  const direct = normalizeString(file.subscription_title ?? file.subscriptionTitle);
+  if (direct) return direct;
+
+  const info = file.subscriptionInfo;
+  if (info && typeof info === 'object' && !Array.isArray(info)) {
+    const nested = normalizeString((info as Record<string, unknown>).subscriptionTitle);
+    if (nested) return nested;
+  }
+
+  const tier = normalizeString(file.subscription_tier ?? file.subscription_type)?.toLowerCase();
+  if (tier === 'pro' || tier === 'paid') return 'KIRO PRO';
+  if (tier === 'free' || tier === 'free_trial') return 'KIRO FREE';
+  return null;
+};
+
+const buildEmbeddedCodexQuota = (file: AuthFileItem): CodexQuotaState | undefined => {
+  const planType = resolveCodexPlanType(file);
+  if (!planType) return undefined;
+  return {
+    status: 'success',
+    windows: [],
+    planType,
+  };
+};
+
+const buildEmbeddedKiroQuota = (file: AuthFileItem): KiroQuotaState | undefined => {
+  const subscriptionTitle = resolveKiroSubscriptionTitle(file);
+  if (!subscriptionTitle) return undefined;
+  return {
+    status: 'success',
+    subscriptionTitle,
+    baseQuota: null,
+    freeTrialQuota: null,
+    overageQuota: null,
+  };
+};
+
+const getCodexPlanLabel = (planType: string | null | undefined, t: TFunction): string | null => {
+  const normalized = normalizePlanType(planType);
+  if (!normalized) return null;
+  if (normalized === 'pro') return t('codex_quota.plan_pro');
+  if (PREMIUM_CODEX_PLAN_TYPES.has(normalized) && normalized !== 'pro') {
+    return t('codex_quota.plan_prolite');
+  }
+  if (normalized === 'plus') return t('codex_quota.plan_plus');
+  if (normalized === 'team') return t('codex_quota.plan_team');
+  if (normalized === 'free') return t('codex_quota.plan_free');
+  return planType || normalized;
+};
+
+const isCodexQuotaWithoutWindows = (quota: unknown): quota is CodexQuotaState => {
+  return Boolean(
+    quota &&
+    typeof quota === 'object' &&
+    'windows' in quota &&
+    Array.isArray((quota as CodexQuotaState).windows) &&
+    (quota as CodexQuotaState).windows.length === 0
+  );
+};
+
+const isKiroQuotaWithoutDetails = (quota: unknown): quota is KiroQuotaState => {
+  return Boolean(
+    quota &&
+    typeof quota === 'object' &&
+    'baseQuota' in quota &&
+    'freeTrialQuota' in quota &&
+    !(quota as KiroQuotaState).baseQuota &&
+    !(quota as KiroQuotaState).freeTrialQuota &&
+    !(quota as KiroQuotaState).overageQuota
+  );
+};
+
 const syncAntigravityQuotaDisplay = async (file: AuthFileItem, data: unknown) => {
   if (!data || typeof data !== 'object') return;
   const payload = data as { groups?: unknown[]; creditBalance?: number | string | null };
@@ -125,17 +205,24 @@ export function useAuthFileQuotaRefresh(
   const embeddedQuota =
     quotaType === 'antigravity'
       ? (buildEmbeddedAntigravityQuota(file) as QuotaState)
-      : undefined;
+      : quotaType === 'codex'
+        ? (buildEmbeddedCodexQuota(file) as QuotaState)
+        : quotaType === 'kiro'
+          ? (buildEmbeddedKiroQuota(file) as QuotaState)
+          : undefined;
   const effectiveQuota = quota ?? embeddedQuota;
 
   const updateQuotaState = useQuotaStore((state) => {
     if (!quotaType) return noopQuotaStateUpdater;
-    if (quotaType === 'antigravity') return state.setAntigravityQuota as unknown as (updater: unknown) => void;
-    if (quotaType === 'claude') return state.setClaudeQuota as unknown as (updater: unknown) => void;
+    if (quotaType === 'antigravity')
+      return state.setAntigravityQuota as unknown as (updater: unknown) => void;
+    if (quotaType === 'claude')
+      return state.setClaudeQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'codex') return state.setCodexQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'kimi') return state.setKimiQuota as unknown as (updater: unknown) => void;
     if (quotaType === 'kiro') return state.setKiroQuota as unknown as (updater: unknown) => void;
-    if (quotaType === 'github-copilot') return state.setCopilotQuota as unknown as (updater: unknown) => void;
+    if (quotaType === 'github-copilot')
+      return state.setCopilotQuota as unknown as (updater: unknown) => void;
     return state.setGeminiCliQuota as unknown as (updater: unknown) => void;
   });
 
@@ -161,7 +248,7 @@ export function useAuthFileQuotaRefresh(
 
     updateQuotaState((prev: Record<string, unknown>) => ({
       ...prev,
-      [file.name]: config.buildLoadingState()
+      [file.name]: config.buildLoadingState(),
     }));
 
     try {
@@ -171,7 +258,7 @@ export function useAuthFileQuotaRefresh(
       }
       updateQuotaState((prev: Record<string, unknown>) => ({
         ...prev,
-        [file.name]: config.buildSuccessState(data)
+        [file.name]: config.buildSuccessState(data),
       }));
       requestAuthFilesRefresh();
       showNotification(t('auth_files.quota_refresh_success', { name: file.name }), 'success');
@@ -180,12 +267,21 @@ export function useAuthFileQuotaRefresh(
       const status = getStatusFromError(err);
       updateQuotaState((prev: Record<string, unknown>) => ({
         ...prev,
-        [file.name]: config.buildErrorState(message, status)
+        [file.name]: config.buildErrorState(message, status),
       }));
       requestAuthFilesRefresh();
       showNotification(t('auth_files.quota_refresh_failed', { name: file.name, message }), 'error');
     }
-  }, [disableControls, file, quota?.status, quotaType, requestAuthFilesRefresh, showNotification, t, updateQuotaState]);
+  }, [
+    disableControls,
+    file,
+    quota?.status,
+    quotaType,
+    requestAuthFilesRefresh,
+    showNotification,
+    t,
+    updateQuotaState,
+  ]);
 
   const quotaStatus = effectiveQuota?.status ?? 'idle';
   const canRefreshQuota = Boolean(quotaType) && !disableControls && !file.disabled;
@@ -201,7 +297,11 @@ export function useAuthFileQuotaRefresh(
 export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   const { file, quotaType, disableControls } = props;
   const { t } = useTranslation();
-  const { quota, quotaStatus, canRefreshQuota, refreshQuotaForFile } = useAuthFileQuotaRefresh(file, quotaType, disableControls);
+  const { quota, quotaStatus, canRefreshQuota, refreshQuotaForFile } = useAuthFileQuotaRefresh(
+    file,
+    quotaType,
+    disableControls
+  );
   const config = getQuotaConfig(quotaType) as unknown as {
     i18nPrefix: string;
     renderQuotaItems: (quota: unknown, t: TFunction, helpers: unknown) => unknown;
@@ -215,28 +315,67 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     quotaErrorStatus,
     quotaError || t('common.unknown_error')
   );
+  const renderQuotaRefreshAction = () => (
+    <button
+      type="button"
+      className={`${styles.quotaMessage} ${styles.quotaMessageAction}`}
+      onClick={() => void refreshQuotaForFile()}
+      disabled={!canRefreshQuota}
+    >
+      {t(`${config.i18nPrefix}.idle`)}
+    </button>
+  );
+  const renderQuotaSuccessItems = () => {
+    if (quotaType === 'codex' && isCodexQuotaWithoutWindows(quota)) {
+      const planLabel = getCodexPlanLabel(quota.planType, t);
+      const isPremiumPlan = PREMIUM_CODEX_PLAN_TYPES.has(normalizePlanType(quota.planType) ?? '');
+
+      return (
+        <>
+          {planLabel ? (
+            <div className={styles.codexPlan}>
+              <span className={styles.codexPlanLabel}>{t('codex_quota.plan_label')}</span>
+              <span className={isPremiumPlan ? styles.premiumPlanValue : styles.codexPlanValue}>
+                {planLabel}
+              </span>
+            </div>
+          ) : null}
+          {renderQuotaRefreshAction()}
+        </>
+      );
+    }
+
+    if (quotaType === 'kiro' && isKiroQuotaWithoutDetails(quota)) {
+      return (
+        <>
+          {quota.subscriptionTitle ? (
+            <div className={styles.codexPlan}>
+              <span className={styles.codexPlanLabel}>{t('kiro_quota.subscription_label')}</span>
+              <span className={styles.codexPlanValue}>{quota.subscriptionTitle}</span>
+            </div>
+          ) : null}
+          {renderQuotaRefreshAction()}
+        </>
+      );
+    }
+
+    return config.renderQuotaItems(quota, t, { styles, QuotaProgressBar }) as ReactNode;
+  };
 
   return (
     <div className={styles.quotaSection}>
       {quotaStatus === 'loading' ? (
         <div className={styles.quotaMessage}>{t(`${config.i18nPrefix}.loading`)}</div>
       ) : quotaStatus === 'idle' ? (
-        <button
-          type="button"
-          className={`${styles.quotaMessage} ${styles.quotaMessageAction}`}
-          onClick={() => void refreshQuotaForFile()}
-          disabled={!canRefreshQuota}
-        >
-          {t(`${config.i18nPrefix}.idle`)}
-        </button>
+        renderQuotaRefreshAction()
       ) : quotaStatus === 'error' ? (
         <div className={styles.quotaError}>
           {t(`${config.i18nPrefix}.load_failed`, {
-            message: quotaErrorMessage
+            message: quotaErrorMessage,
           })}
         </div>
       ) : quota ? (
-        (config.renderQuotaItems(quota, t, { styles, QuotaProgressBar }) as ReactNode)
+        renderQuotaSuccessItems()
       ) : (
         <div className={styles.quotaMessage}>{t(`${config.i18nPrefix}.idle`)}</div>
       )}

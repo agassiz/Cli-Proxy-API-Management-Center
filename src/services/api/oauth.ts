@@ -10,12 +10,18 @@ export type OAuthProvider =
   | 'antigravity'
   | 'gemini-cli'
   | 'kimi'
-  | 'xai';
+  | 'xai'
+  | 'kiro';
 
 export interface OAuthStartResponse {
-  url: string;
+  url?: string;
   state?: string;
 }
+
+export type OAuthStatusResponse =
+  | { status: 'ok' | 'wait' | 'error'; error?: string }
+  | { status: 'device_code'; verification_url: string; user_code: string }
+  | { status: 'auth_url'; url: string };
 
 export interface OAuthCallbackResponse {
   status: 'ok';
@@ -26,10 +32,11 @@ const WEBUI_SUPPORTED: OAuthProvider[] = [
   'anthropic',
   'antigravity',
   'gemini-cli',
+  'kiro',
   'xai'
 ];
 const CALLBACK_PROVIDER_MAP: Partial<Record<OAuthProvider, string>> = {
-  'gemini-cli': 'gemini'
+  'gemini-cli': 'gemini',
 };
 
 export const oauthApi = {
@@ -42,20 +49,20 @@ export const oauthApi = {
       params.project_id = options.projectId;
     }
     return apiClient.get<OAuthStartResponse>(`/${provider}-auth-url`, {
-      params: Object.keys(params).length ? params : undefined
+      params: Object.keys(params).length ? params : undefined,
     });
   },
 
   getAuthStatus: (state: string) =>
-    apiClient.get<{ status: 'ok' | 'wait' | 'error'; error?: string }>(`/get-auth-status`, {
-      params: { state }
+    apiClient.get<OAuthStatusResponse>(`/get-auth-status`, {
+      params: { state },
     }),
 
   submitCallback: (provider: OAuthProvider, redirectUrl: string) => {
     const callbackProvider = CALLBACK_PROVIDER_MAP[provider] ?? provider;
     return apiClient.post<OAuthCallbackResponse>('/oauth-callback', {
       provider: callbackProvider,
-      redirect_url: redirectUrl
+      redirect_url: redirectUrl,
     });
-  }
+  },
 };

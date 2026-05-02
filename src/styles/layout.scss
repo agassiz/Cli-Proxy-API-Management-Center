@@ -3,7 +3,7 @@
 :root {
   --header-height: 80px;
   --shell-gutter: 24px;
-  --sidebar-panel-width: 240px;
+  --sidebar-panel-width: 180px;
   --sidebar-collapsed-width: 68px;
   --sidebar-active-width: var(--sidebar-panel-width);
   --sidebar-gap: 32px;
@@ -567,7 +567,8 @@
 .main-content {
   flex: 1 0 auto;
   min-height: 100%;
-  padding: 70px clamp(20px, 3vw, 48px) 40px;
+  //padding: 70px clamp(20px, 3vw, 48px) 40px;
+  padding-top: 70px;
   display: flex;
   flex-direction: column;
   gap: $spacing-lg;

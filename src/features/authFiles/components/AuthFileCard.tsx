@@ -46,6 +46,7 @@ const HEALTHY_STATUS_MESSAGES = new Set(['ok', 'healthy', 'ready', 'success', 'a
 export type AuthFileCardProps = {
   file: AuthFileItem;
   compact: boolean;
+  hideErrors?: boolean;
   selected: boolean;
   resolvedTheme: ResolvedTheme;
   disableControls: boolean;
@@ -72,6 +73,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const {
     file,
     compact,
+    hideErrors = false,
     selected,
     resolvedTheme,
     disableControls,
@@ -242,7 +244,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
             )}
           </div>
 
-          {rawStatusMessage && hasStatusWarning && (
+          {rawStatusMessage && hasStatusWarning && !hideErrors && (
             <div className={styles.healthStatusMessage} title={rawStatusMessage}>
               <IconInfo className={styles.messageIcon} size={14} />
               <span>{rawStatusMessage}</span>

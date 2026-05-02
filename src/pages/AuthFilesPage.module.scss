@@ -295,32 +295,130 @@
   }
 }
 
-.filterToggleItem {
-  min-width: 0;
-  grid-column: 1 / -1;
-
-  @include tablet {
-    grid-column: 1 / -1;
-  }
-}
-
-.filterToggleGroup {
+// 状态过滤行：左侧分段控件 + 右侧视图偏好
+.filterStatusRow {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: $spacing-md;
+  align-items: flex-start;
+  margin-top: $spacing-md;
 
   @include mobile {
     grid-template-columns: 1fr;
   }
 }
 
-.filterToggleCard {
+// 互斥状态分段控件：全部 / 仅问题 / 仅停用 / 仅正常
+.statusSegmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.statusSegment {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+
+  &:hover {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent);
+    outline-offset: 1px;
+  }
+}
+
+.statusSegmentActive {
+  background: var(--primary-color);
+  color: #ffffff;
+
+  &:hover {
+    background: var(--primary-color);
+    color: #ffffff;
+  }
+}
+
+// 问题类型 chips：仅在选中"仅问题"时出现，挂在状态分段下方，不再插入到开关之间
+.issueChipsRow {
   display: flex;
   align-items: center;
-  min-width: 0;
-  min-height: 42px;
-  padding: 0 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.issueChipsLabel {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.issueChips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.issueChip {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+
+  &:hover {
+    color: var(--text-primary);
+    border-color: color-mix(in srgb, var(--primary-color) 50%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent);
+    outline-offset: 1px;
+  }
+}
+
+.issueChipActive {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #ffffff;
+}
+
+// 视图偏好分区（简略模式 + 隐藏错误）
+.viewPrefBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
   background: color-mix(in srgb, var(--bg-primary) 56%, transparent);
@@ -331,14 +429,14 @@
   }
 }
 
-.filterToggle {
-  display: flex;
-  align-items: center;
-  min-height: 40px;
-  padding-inline: 2px;
+.viewPrefDivider {
+  width: 1px;
+  align-self: stretch;
+  margin: 8px 0;
+  background: color-mix(in srgb, var(--border-color) 60%, transparent);
 }
 
-.filterToggleLabel {
+.viewPrefLabel {
   display: inline-flex;
   align-items: center;
   color: var(--text-primary);
@@ -355,13 +453,6 @@
   display: block;
   color: var(--text-tertiary);
   pointer-events: none;
-}
-
-.issueFilterGroup {
-  display: flex;
-  gap: 6px;
-  margin-left: 8px;
-  flex-wrap: wrap;
 }
 
 .pageSizeSelect {
@@ -2066,4 +2157,156 @@
   font-size: 12px;
   color: var(--text-tertiary);
   font-family: inherit;
+}
+
+// ── SuperCategoryGroupCard ──
+.superCategoryGroup {
+  grid-column: 1 / -1;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--bg-primary) 85%, transparent);
+  backdrop-filter: var(--glass-backdrop-filter);
+  -webkit-backdrop-filter: var(--glass-backdrop-filter);
+  overflow: hidden;
+  transition: box-shadow $transition-fast;
+
+  &:hover {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.superCategoryGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  width: 100%;
+  padding: 14px 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--bg-secondary) 50%, transparent);
+  }
+
+  @include mobile {
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+  }
+}
+
+.superCategoryGroupTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.superCategoryGroupIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.superCategoryGroupName {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.superCategoryGroupCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.superCategoryGroupStats {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+
+  @include mobile {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+.superCategoryGroupStatPills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.superCategoryGroupHealth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+  max-width: 260px;
+  flex: 1;
+
+  @include mobile {
+    min-width: 120px;
+    max-width: 100%;
+  }
+}
+
+.superCategoryGroupHealthLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.superCategoryGroupHealthBar {
+  flex: 1;
+  height: 6px;
+  min-width: 40px;
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.superCategoryGroupHealthFill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.superCategoryGroupHealthValue {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.superCategoryGroupChevron {
+  font-size: 16px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  line-height: 1;
+
+  &[data-expanded='true'] {
+    transform: rotate(180deg);
+  }
+}
+
+.superCategoryGroupBody {
+  padding: 4px 16px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 40%, transparent);
 }

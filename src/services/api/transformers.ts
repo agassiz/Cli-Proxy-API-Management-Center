@@ -391,6 +391,8 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
 
   const quota = raw['quota-exceeded'] ?? raw.quotaExceeded;
   if (isRecord(quota)) {
+    const antigravityCreditsModels =
+      quota['antigravity-credits-models'] ?? quota.antigravityCreditsModels;
     config.quotaExceeded = {
       switchProject: normalizeBoolean(quota['switch-project'] ?? quota.switchProject),
       switchPreviewModel: normalizeBoolean(
@@ -398,12 +400,18 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
       ),
       antigravityCredits: normalizeBoolean(
         quota['antigravity-credits'] ?? quota.antigravityCredits
-      )
+      ),
+      antigravityCreditsModels: Array.isArray(antigravityCreditsModels)
+        ? antigravityCreditsModels.map(String)
+        : undefined
     };
   }
 
   config.requestLog = normalizeBoolean(raw['request-log'] ?? raw.requestLog);
   config.loggingToFile = normalizeBoolean(raw['logging-to-file'] ?? raw.loggingToFile);
+  config.usageStatisticsEnabled = normalizeBoolean(
+    raw['usage-statistics-enabled'] ?? raw.usageStatisticsEnabled
+  );
   const logsMaxTotalSizeMb = raw['logs-max-total-size-mb'] ?? raw.logsMaxTotalSizeMb;
   if (typeof logsMaxTotalSizeMb === 'number' && Number.isFinite(logsMaxTotalSizeMb)) {
     config.logsMaxTotalSizeMb = logsMaxTotalSizeMb;

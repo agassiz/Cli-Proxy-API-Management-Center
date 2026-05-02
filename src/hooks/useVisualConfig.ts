@@ -172,6 +172,14 @@ function getPortError(value: string): 'port_range' | undefined {
   return parsed >= 1 && parsed <= 65535 ? undefined : 'port_range';
 }
 
+function parseKiroCooldownStrategy(raw: unknown): VisualConfigValues['kiroCooldownStrategy'] {
+  if (typeof raw !== 'string') return 'linear';
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'fixed') return 'fixed';
+  if (normalized === 'exponential' || normalized === 'exponential-increase') return 'exponential';
+  return 'linear';
+}
+
 export function getVisualConfigValidationErrors(
   values: VisualConfigValues
 ): VisualConfigValidationErrors {
@@ -186,6 +194,17 @@ export function getVisualConfigValidationErrors(
     maxRetryCredentials: getNonNegativeIntegerError(values.maxRetryCredentials),
     maxRetryInterval: getNonNegativeIntegerError(values.maxRetryInterval),
     authAutoRefreshWorkers: getNonNegativeIntegerError(values.authAutoRefreshWorkers),
+    kiroPerAccountRpmLimit: getNonNegativeIntegerError(values.kiroPerAccountRpmLimit),
+    kiroFreeRpmLimit: getNonNegativeIntegerError(values.kiroFreeRpmLimit),
+    kiroProRpmLimit: getNonNegativeIntegerError(values.kiroProRpmLimit),
+    kiroBaseCooldownSeconds: getNonNegativeIntegerError(values.kiroBaseCooldownSeconds),
+    kiroMaxCooldownSeconds: getNonNegativeIntegerError(values.kiroMaxCooldownSeconds),
+    kiroConsecutiveErrorCooldownThreshold: getNonNegativeIntegerError(
+      values.kiroConsecutiveErrorCooldownThreshold
+    ),
+    kiroConsecutiveErrorDisableThreshold: getNonNegativeIntegerError(
+      values.kiroConsecutiveErrorDisableThreshold
+    ),
     'streaming.keepaliveSeconds': getNonNegativeIntegerError(values.streaming.keepaliveSeconds),
     'streaming.bootstrapRetries': getNonNegativeIntegerError(values.streaming.bootstrapRetries),
     'streaming.nonstreamKeepaliveInterval': getNonNegativeIntegerError(
@@ -793,6 +812,12 @@ function getNextDirtyFields(
   if (Object.prototype.hasOwnProperty.call(patch, 'loggingToFile')) {
     updateDirty('loggingToFile', nextValues.loggingToFile === baselineValues.loggingToFile);
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'usageStatisticsEnabled')) {
+    updateDirty(
+      'usageStatisticsEnabled',
+      nextValues.usageStatisticsEnabled === baselineValues.usageStatisticsEnabled
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(patch, 'logsMaxTotalSizeMb')) {
     updateDirty(
       'logsMaxTotalSizeMb',
@@ -857,6 +882,77 @@ function getNextDirtyFields(
     updateDirty(
       'routingSessionAffinityTTL',
       nextValues.routingSessionAffinityTTL === baselineValues.routingSessionAffinityTTL
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'augmentSilentModeModel')) {
+    updateDirty(
+      'augmentSilentModeModel',
+      nextValues.augmentSilentModeModel === baselineValues.augmentSilentModeModel
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'augmentImageFallbackModel')) {
+    updateDirty(
+      'augmentImageFallbackModel',
+      nextValues.augmentImageFallbackModel === baselineValues.augmentImageFallbackModel
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'augmentShowThinkingProgress')) {
+    updateDirty(
+      'augmentShowThinkingProgress',
+      nextValues.augmentShowThinkingProgress === baselineValues.augmentShowThinkingProgress
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroPerAccountRpmLimit')) {
+    updateDirty(
+      'kiroPerAccountRpmLimit',
+      nextValues.kiroPerAccountRpmLimit === baselineValues.kiroPerAccountRpmLimit
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroFreeRpmLimit')) {
+    updateDirty(
+      'kiroFreeRpmLimit',
+      nextValues.kiroFreeRpmLimit === baselineValues.kiroFreeRpmLimit
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroProRpmLimit')) {
+    updateDirty('kiroProRpmLimit', nextValues.kiroProRpmLimit === baselineValues.kiroProRpmLimit);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroCooldownStrategy')) {
+    updateDirty(
+      'kiroCooldownStrategy',
+      nextValues.kiroCooldownStrategy === baselineValues.kiroCooldownStrategy
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroBaseCooldownSeconds')) {
+    updateDirty(
+      'kiroBaseCooldownSeconds',
+      nextValues.kiroBaseCooldownSeconds === baselineValues.kiroBaseCooldownSeconds
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroMaxCooldownSeconds')) {
+    updateDirty(
+      'kiroMaxCooldownSeconds',
+      nextValues.kiroMaxCooldownSeconds === baselineValues.kiroMaxCooldownSeconds
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroConsecutiveErrorCooldownThreshold')) {
+    updateDirty(
+      'kiroConsecutiveErrorCooldownThreshold',
+      nextValues.kiroConsecutiveErrorCooldownThreshold ===
+        baselineValues.kiroConsecutiveErrorCooldownThreshold
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroConsecutiveErrorDisableThreshold')) {
+    updateDirty(
+      'kiroConsecutiveErrorDisableThreshold',
+      nextValues.kiroConsecutiveErrorDisableThreshold ===
+        baselineValues.kiroConsecutiveErrorDisableThreshold
+    );
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'kiroInvalidAuthAutoDisable')) {
+    updateDirty(
+      'kiroInvalidAuthAutoDisable',
+      nextValues.kiroInvalidAuthAutoDisable === baselineValues.kiroInvalidAuthAutoDisable
     );
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'payloadDefaultRules')) {
@@ -994,6 +1090,9 @@ export function useVisualConfig() {
       const remoteManagement = asRecord(parsed['remote-management']);
       const quotaExceeded = asRecord(parsed['quota-exceeded']);
       const routing = asRecord(parsed.routing);
+      const augment = asRecord(parsed.augment);
+      const kiroRequestPolicy = asRecord(parsed['kiro-request-policy']);
+      const kiroRpmLimits = asRecord(kiroRequestPolicy?.['rpm-limits']);
       const payload = asRecord(parsed.payload);
       const streaming = asRecord(parsed.streaming);
       const claudeHeaderDefaults = asRecord(parsed['claude-header-defaults']);
@@ -1027,9 +1126,9 @@ export function useVisualConfig() {
         debug: Boolean(parsed.debug),
         commercialMode: Boolean(parsed['commercial-mode']),
         loggingToFile: Boolean(parsed['logging-to-file']),
+        usageStatisticsEnabled: Boolean(parsed['usage-statistics-enabled']),
         logsMaxTotalSizeMb: String(parsed['logs-max-total-size-mb'] ?? ''),
         errorLogsMaxFiles: String(parsed['error-logs-max-files'] ?? ''),
-        usageStatisticsEnabled: Boolean(parsed['usage-statistics-enabled']),
         redisUsageQueueRetentionSeconds: String(
           parsed['redis-usage-queue-retention-seconds'] ?? ''
         ),
@@ -1096,6 +1195,46 @@ export function useVisualConfig() {
                 ? routing['sessionAffinityTTL']
                 : '',
 
+        augmentSilentModeModel:
+          typeof augment?.['silent-mode-model'] === 'string'
+            ? augment['silent-mode-model']
+            : DEFAULT_VISUAL_VALUES.augmentSilentModeModel,
+        augmentImageFallbackModel:
+          typeof augment?.['image-fallback-model'] === 'string'
+            ? augment['image-fallback-model']
+            : DEFAULT_VISUAL_VALUES.augmentImageFallbackModel,
+        augmentShowThinkingProgress: Boolean(
+          augment?.['show-thinking-progress'] ?? DEFAULT_VISUAL_VALUES.augmentShowThinkingProgress
+        ),
+
+        kiroPerAccountRpmLimit: String(
+          kiroRequestPolicy?.['per-account-rpm-limit'] ??
+            DEFAULT_VISUAL_VALUES.kiroPerAccountRpmLimit
+        ),
+        kiroFreeRpmLimit: String(kiroRpmLimits?.free ?? DEFAULT_VISUAL_VALUES.kiroFreeRpmLimit),
+        kiroProRpmLimit: String(kiroRpmLimits?.pro ?? DEFAULT_VISUAL_VALUES.kiroProRpmLimit),
+        kiroCooldownStrategy: parseKiroCooldownStrategy(kiroRequestPolicy?.['cooldown-strategy']),
+        kiroBaseCooldownSeconds: String(
+          kiroRequestPolicy?.['base-cooldown-seconds'] ??
+            DEFAULT_VISUAL_VALUES.kiroBaseCooldownSeconds
+        ),
+        kiroMaxCooldownSeconds: String(
+          kiroRequestPolicy?.['max-cooldown-seconds'] ??
+            DEFAULT_VISUAL_VALUES.kiroMaxCooldownSeconds
+        ),
+        kiroConsecutiveErrorCooldownThreshold: String(
+          kiroRequestPolicy?.['consecutive-error-cooldown-threshold'] ??
+            DEFAULT_VISUAL_VALUES.kiroConsecutiveErrorCooldownThreshold
+        ),
+        kiroConsecutiveErrorDisableThreshold: String(
+          kiroRequestPolicy?.['consecutive-error-disable-threshold'] ??
+            DEFAULT_VISUAL_VALUES.kiroConsecutiveErrorDisableThreshold
+        ),
+        kiroInvalidAuthAutoDisable: Boolean(
+          kiroRequestPolicy?.['invalid-auth-auto-disable'] ??
+          DEFAULT_VISUAL_VALUES.kiroInvalidAuthAutoDisable
+        ),
+
         payloadDefaultRules: parsePayloadRules(payload?.default),
         payloadDefaultRawRules: parseRawPayloadRules(payload?.['default-raw']),
         payloadOverrideRules: parsePayloadRules(payload?.override),
@@ -1127,6 +1266,10 @@ export function useVisualConfig() {
           doc.contents = doc.createNode({}) as unknown as typeof doc.contents;
         }
         const values = visualValues;
+
+        if (docHas(doc, ['kiro-request-interval'])) {
+          doc.deleteIn(['kiro-request-interval']);
+        }
 
         setStringInDoc(doc, ['host'], values.host);
         setIntFromStringInDoc(doc, ['port'], values.port);
@@ -1188,6 +1331,7 @@ export function useVisualConfig() {
 
         setBooleanInDoc(doc, ['commercial-mode'], values.commercialMode);
         setBooleanInDoc(doc, ['logging-to-file'], values.loggingToFile);
+        setBooleanInDoc(doc, ['usage-statistics-enabled'], values.usageStatisticsEnabled);
         setIntFromStringInDoc(doc, ['logs-max-total-size-mb'], values.logsMaxTotalSizeMb);
         setIntFromStringInDoc(doc, ['error-logs-max-files'], values.errorLogsMaxFiles);
         setBooleanInDoc(doc, ['usage-statistics-enabled'], values.usageStatisticsEnabled);
@@ -1320,6 +1464,98 @@ export function useVisualConfig() {
             values.routingSessionAffinityTTL
           );
           deleteIfMapEmpty(doc, ['routing']);
+        }
+
+        const shouldWriteAugment =
+          docHas(doc, ['augment']) ||
+          dirtyFields.has('augmentSilentModeModel') ||
+          dirtyFields.has('augmentImageFallbackModel') ||
+          dirtyFields.has('augmentShowThinkingProgress');
+        if (shouldWriteAugment) {
+          ensureMapInDoc(doc, ['augment']);
+          setStringInDoc(doc, ['augment', 'silent-mode-model'], values.augmentSilentModeModel);
+          setStringInDoc(
+            doc,
+            ['augment', 'image-fallback-model'],
+            values.augmentImageFallbackModel
+          );
+          if (
+            shouldWriteManagedField(
+              doc,
+              ['augment', 'show-thinking-progress'],
+              dirtyFields,
+              'augmentShowThinkingProgress'
+            )
+          ) {
+            doc.setIn(['augment', 'show-thinking-progress'], values.augmentShowThinkingProgress);
+          }
+          deleteIfMapEmpty(doc, ['augment']);
+        }
+
+        const shouldWriteKiroPolicy =
+          docHas(doc, ['kiro-request-policy']) ||
+          dirtyFields.has('kiroPerAccountRpmLimit') ||
+          dirtyFields.has('kiroFreeRpmLimit') ||
+          dirtyFields.has('kiroProRpmLimit') ||
+          dirtyFields.has('kiroCooldownStrategy') ||
+          dirtyFields.has('kiroBaseCooldownSeconds') ||
+          dirtyFields.has('kiroMaxCooldownSeconds') ||
+          dirtyFields.has('kiroConsecutiveErrorCooldownThreshold') ||
+          dirtyFields.has('kiroConsecutiveErrorDisableThreshold') ||
+          dirtyFields.has('kiroInvalidAuthAutoDisable');
+        if (shouldWriteKiroPolicy) {
+          ensureMapInDoc(doc, ['kiro-request-policy']);
+          setIntFromStringInDoc(
+            doc,
+            ['kiro-request-policy', 'per-account-rpm-limit'],
+            values.kiroPerAccountRpmLimit
+          );
+          if (
+            docHas(doc, ['kiro-request-policy', 'rpm-limits']) ||
+            values.kiroFreeRpmLimit.trim() ||
+            values.kiroProRpmLimit.trim() ||
+            dirtyFields.has('kiroFreeRpmLimit') ||
+            dirtyFields.has('kiroProRpmLimit')
+          ) {
+            ensureMapInDoc(doc, ['kiro-request-policy', 'rpm-limits']);
+            setIntFromStringInDoc(
+              doc,
+              ['kiro-request-policy', 'rpm-limits', 'free'],
+              values.kiroFreeRpmLimit
+            );
+            setIntFromStringInDoc(
+              doc,
+              ['kiro-request-policy', 'rpm-limits', 'pro'],
+              values.kiroProRpmLimit
+            );
+            deleteIfMapEmpty(doc, ['kiro-request-policy', 'rpm-limits']);
+          }
+          doc.setIn(['kiro-request-policy', 'cooldown-strategy'], values.kiroCooldownStrategy);
+          setIntFromStringInDoc(
+            doc,
+            ['kiro-request-policy', 'base-cooldown-seconds'],
+            values.kiroBaseCooldownSeconds
+          );
+          setIntFromStringInDoc(
+            doc,
+            ['kiro-request-policy', 'max-cooldown-seconds'],
+            values.kiroMaxCooldownSeconds
+          );
+          setIntFromStringInDoc(
+            doc,
+            ['kiro-request-policy', 'consecutive-error-cooldown-threshold'],
+            values.kiroConsecutiveErrorCooldownThreshold
+          );
+          setIntFromStringInDoc(
+            doc,
+            ['kiro-request-policy', 'consecutive-error-disable-threshold'],
+            values.kiroConsecutiveErrorDisableThreshold
+          );
+          doc.setIn(
+            ['kiro-request-policy', 'invalid-auth-auto-disable'],
+            values.kiroInvalidAuthAutoDisable
+          );
+          deleteIfMapEmpty(doc, ['kiro-request-policy']);
         }
 
         const keepaliveSeconds =
